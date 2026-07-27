@@ -3,7 +3,6 @@ from scripts.generate_ads_xlsx import (
     validate_combined_ad,
     assemble_combined_ad_rows,
     select_assembler,
-    HEADERS,
 )
 
 
@@ -106,11 +105,8 @@ def test_select_assembler_picks_combined():
     assert len(rows) == 1
 
 
-def test_select_assembler_defaults_to_classic():
-    creatives = {
-        "campaign_name": "C",
-        "groups": [{"name": "G", "url": "https://x", "ads": [{"title": "t", "text": "x"}]}],
-    }
-    rows, warnings, headers = select_assembler(creatives)
-    assert headers == HEADERS
-    assert len(rows) == 1
+def test_select_assembler_defaults_to_combined():
+    """Вход без ad_model идёт в комбинаторную модель — единственную существующую."""
+    rows, warnings, headers = select_assembler({"groups": []})
+    assert headers is COMBINED_HEADERS
+    assert rows == []

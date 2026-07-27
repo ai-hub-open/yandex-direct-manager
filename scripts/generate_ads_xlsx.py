@@ -11,7 +11,7 @@ generate_ads_xlsx.py — Превращает creatives.json в таблицы �
                                         [--output-dir <path>]
                                         [--format xlsx|csv|auto]   (по умолч. auto)
 
-JSON-схема creatives.json — см. assets/creatives_schema_example.json.
+JSON-схема creatives.json — см. assets/creatives_schema_combined_example.json.
 """
 from __future__ import annotations
 
@@ -19,28 +19,6 @@ import argparse
 import csv
 import json
 from pathlib import Path
-
-
-LIMITS = {
-    "title": 56,
-    "title2": 30,
-    "text": 81,
-    "display_url_path": 20,
-    "sitelink_title": 30,
-    "sitelink_description": 60,
-    "callout": 25,
-}
-
-
-HEADERS = [
-    "Campaign", "Group", "Title", "Title2", "Text", "Href",
-    "DisplayUrlPath",
-    "Sitelink1_Title", "Sitelink1_Desc", "Sitelink1_Url",
-    "Sitelink2_Title", "Sitelink2_Desc", "Sitelink2_Url",
-    "Sitelink3_Title", "Sitelink3_Desc", "Sitelink3_Url",
-    "Sitelink4_Title", "Sitelink4_Desc", "Sitelink4_Url",
-    "Callout1", "Callout2", "Callout3", "Callout4",
-]
 
 
 COMBINED_LIMITS = {
@@ -68,59 +46,6 @@ COMBINED_HEADERS = [
     "Sitelink4_Title", "Sitelink4_Desc", "Sitelink4_Url",
     "Callout1", "Callout2", "Callout3", "Callout4",
 ]
-
-
-def validate_creative(c: dict, group_name: str) -> list[str]:
-    warnings = []
-    for field, limit in LIMITS.items():
-        if field in c and c[field] and len(c[field]) > limit:
-            warnings.append(
-                f"[{group_name}] {field}={c[field]!r} превышает {limit} ({len(c[field])} симв)"
-            )
-    for i, sl in enumerate(c.get("sitelinks", []), 1):
-        if len(sl.get("title", "")) > LIMITS["sitelink_title"]:
-            warnings.append(f"[{group_name}] sitelink{i}.title={sl['title']!r} длиннее {LIMITS['sitelink_title']}")
-        if len(sl.get("description", "")) > LIMITS["sitelink_description"]:
-            warnings.append(f"[{group_name}] sitelink{i}.description={sl['description']!r} длиннее {LIMITS['sitelink_description']}")
-    for i, callout in enumerate(c.get("callouts", []), 1):
-        if len(callout) > LIMITS["callout"]:
-            warnings.append(f"[{group_name}] callout{i}={callout!r} длиннее {LIMITS['callout']}")
-    return warnings
-
-
-def assemble_ad_rows(creatives: dict) -> tuple[list[list], list[str]]:
-    rows: list[list] = []
-    all_warnings: list[str] = []
-    campaign_name = creatives.get("campaign_name", "")
-    default_url = creatives.get("default_url", "")
-
-    for group in creatives.get("groups", []):
-        for ad in group.get("ads", []):
-            all_warnings.extend(validate_creative(ad, group["name"]))
-            sitelinks = ad.get("sitelinks", [])[:4]
-            callouts = ad.get("callouts", [])[:4]
-            row = [
-                campaign_name,
-                group["name"],
-                ad.get("title", ""),
-                ad.get("title2", ""),
-                ad.get("text", ""),
-                ad.get("href") or group.get("url") or default_url,
-                ad.get("display_url_path", ""),
-            ]
-            for i in range(4):
-                if i < len(sitelinks):
-                    row.extend([
-                        sitelinks[i].get("title", ""),
-                        sitelinks[i].get("description", ""),
-                        sitelinks[i].get("url", ""),
-                    ])
-                else:
-                    row.extend(["", "", ""])
-            for i in range(4):
-                row.append(callouts[i] if i < len(callouts) else "")
-            rows.append(row)
-    return rows, all_warnings
 
 
 def validate_combined_ad(ad: dict, group_name: str) -> list[str]:
@@ -206,11 +131,9 @@ def assemble_combined_ad_rows(creatives: dict) -> tuple[list[list], list[str]]:
 
 
 def select_assembler(creatives: dict) -> tuple[list[list], list[str], list[str]]:
-    if creatives.get("ad_model") == "epk_combined":
-        rows, warnings = assemble_combined_ad_rows(creatives)
-        return rows, warnings, COMBINED_HEADERS
-    rows, warnings = assemble_ad_rows(creatives)
-    return rows, warnings, HEADERS
+    # Модель одна — комбинаторное объявление. Отсутствие поля трактуем как комбинаторное.
+    rows, warnings = assemble_combined_ad_rows(creatives)
+    return rows, warnings, COMBINED_HEADERS
 
 
 def assemble_keyword_rows(creatives: dict) -> list[list]:

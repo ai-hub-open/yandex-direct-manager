@@ -19,7 +19,7 @@
 
 1. **`00_brief.md`** — поле 7 (УТП + сужающие слова) и поле 1 (продукт, для колонки Б).
 2. **Контекст продукта** — название, регион, тип спроса (определяется по полю 7 и полю 1).
-3. **Доступ к Yandex Cloud Search API (Wordstat)** — env `WORDSTAT_API_KEY` + `WORDSTAT_FOLDER_ID`, клиент `scripts/wordstat_api.py` (https://yandex.cloud/ru/docs/search-api/concepts/wordstat). Иначе симуляция с пометкой `[SIM]`.
+3. **Доступ к Yandex Cloud Search API (Wordstat)** — env `WORDSTAT_API_KEY` + `WORDSTAT_FOLDER_ID`, клиент `scripts/wordstat_api.py` (https://yandex.cloud/ru/docs/search-api/concepts/wordstat). Если ключа нет — частотности пробиваются через браузер пользователя (`references/wordstat-browser.md`).
 
 ## Фаза 1. Распознавание типа спроса
 
@@ -109,7 +109,7 @@ python -m scripts.wordstat_api --mode masks --phrases-file _masks_seed.txt \
 
 ⚠️ Операторы Wordstat (`!`, `+`, `[]`, кавычки) метод **не поддерживает** — фразы шлём без операторов, нормализованные.
 
-⚠️ Если доступа к Wordstat API нет (`--check` упал или нет ключа) — режим симуляции: пометки `[SIM]`, в артефакте указано «реальная проверка не сделана, нужно подключить API до запуска».
+⚠️ Если доступа к Wordstat API нет (`--check` упал или нет ключа) — частотности масок **пробиваем через браузер пользователя** (`references/wordstat-browser.md`, инструмент `claude-in-chrome`), а не прикидкой. Пробив делает оркестратор. Непробитые фразы помечаем `frequency: n/a`.
 
 ### 4.4 Минимальный порог частотности
 
