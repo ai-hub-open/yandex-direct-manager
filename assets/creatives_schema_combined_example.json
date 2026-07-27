@@ -1,0 +1,44 @@
+{
+  "_schema_note": "Пример creatives.json для ЕПК (ad_model=epk_combined). Одна группа = одно комбинаторное объявление в объекте combined_ad. generate_ads_xlsx читает этот формат при ad_model=epk_combined. Лимиты: до 7 заголовков ≤56, до 3 текстов ≤81, до 5 изображений, до 6 видео.",
+  "ad_model": "epk_combined",
+  "campaign_name": "ЕПК — AiSMM Pro — Фрилансер — RU",
+  "default_url": "https://aismm.pro/?utm_source=yandex&utm_medium=cpc&utm_campaign=aismm-epk&utm_term={keyword}",
+  "negative_keywords": ["бесплатно", "торрент", "скачать", "вакансия", "работа"],
+  "groups": [
+    {
+      "name": "SMM-фрилансер — автогенерация контента",
+      "url": "https://aismm.pro/dlya-frilancera",
+      "keywords": [
+        "\"автоматизация смм\"",
+        "\"нейросеть для смм\"",
+        "\"генерация постов\"",
+        "\"ai контент для соцсетей\""
+      ],
+      "negative_keywords": ["обучение", "курс", "школа"],
+      "combined_ad": {
+        "titles": [
+          "Сервис для контента в соцсетях с ИИ",
+          "Автогенерация постов — неделя за вечер",
+          "SMM на ИИ от 990 ₽",
+          "Триал 7 дней без карты",
+          "Посты и видео под стиль клиента"
+        ],
+        "texts": [
+          "Генерация постов и видео под стиль клиента. Триал 7 дней без карты. Начать.",
+          "Тариф соло от 990 ₽. Видео, статичные посты, заголовки. Попробовать.",
+          "Берите больше клиентов: контент готов за вечер. Отмена в 1 клик."
+        ],
+        "display_url_path": "dlya-frilancera",
+        "images": ["assets/img/epk_1080x1080.jpg", "assets/img/epk_1080x607.jpg"],
+        "videos": [],
+        "sitelinks": [
+          {"title": "Тарифы", "description": "От 990 ₽/мес для соло", "url": "https://aismm.pro/pricing"},
+          {"title": "Демо генерации", "description": "Без регистрации, сейчас", "url": "https://aismm.pro/demo"},
+          {"title": "Кейсы фрилансеров", "description": "Как берут больше клиентов", "url": "https://aismm.pro/cases"},
+          {"title": "FAQ", "description": "Частые вопросы", "url": "https://aismm.pro/faq"}
+        ],
+        "callouts": ["Без карты", "Триал 7 дней", "Поддержка 24/7", "Отмена в 1 клик"]
+      }
+    }
+  ]
+}
