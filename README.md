@@ -116,9 +116,10 @@
 ```bash
 git clone https://github.com/ai-hub-open/yandex-direct-manager.git
 cd yandex-direct-manager
+python install.py
 ```
 
-Либо скачайте архив через **Code → Download ZIP**.
+`install.py` проверит версию Python, поставит зависимости и прогонит самопроверку модулей; при проблеме скажет, что именно чинить. Альтернативы: готовый архив `yandex-direct-manager.skill` из [релизов](https://github.com/ai-hub-open/yandex-direct-manager/releases) (распакуйте и запустите `python install.py` внутри) или **Code → Download ZIP**.
 
 В пакете один файл `SKILL.md` — в корне. `subagents/semantics.md` — вспомогательная инструкция; не переименовывайте её в `SKILL.md`.
 
@@ -168,8 +169,10 @@ python -m scripts.wordstat_api --check
 
 ## Необязательные зависимости
 
+Ставятся автоматически при `python install.py`; вручную:
+
 ```bash
-pip install openpyxl python-docx
+pip install -r requirements.txt
 ```
 
 - без `openpyxl` таблица объявлений сохраняется в CSV;
