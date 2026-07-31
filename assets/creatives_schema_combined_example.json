@@ -1,5 +1,6 @@
 {
-  "_schema_note": "Пример creatives.json для комбинаторного объявления ЕПК (единственная модель). Одна группа = одно комбинаторное объявление в объекте combined_ad. Лимиты: до 7 заголовков ≤56, до 3 текстов ≤81, до 5 изображений, до 6 видео.",
+  "_schema_note": "Пример 08_creatives.json для комбинаторного объявления ЕПК (единственная модель). Одна группа = одно комбинаторное объявление в объекте combined_ad. Лимиты: до 7 заголовков ≤56, до 3 текстов ≤81, до 5 изображений, до 6 видео, до 8 быстрых ссылок, уточнение ≤25 символов. Проверяется через python -m scripts.preflight.",
+  "campaign_key": "freelancer",
   "campaign_name": "ЕПК — AiSMM Pro — Фрилансер — RU",
   "default_url": "https://aismm.pro/?utm_source=yandex&utm_medium=cpc&utm_campaign=aismm-epk&utm_term={keyword}",
   "negative_keywords": ["бесплатно", "торрент", "скачать", "вакансия", "работа"],
@@ -28,6 +29,7 @@
           "Берите больше клиентов: контент готов за вечер. Отмена в 1 клик."
         ],
         "display_url_path": "dlya-frilancera",
+        "business_id": null,
         "images": ["assets/img/epk_1080x1080.jpg", "assets/img/epk_1080x607.jpg"],
         "videos": [],
         "sitelinks": [

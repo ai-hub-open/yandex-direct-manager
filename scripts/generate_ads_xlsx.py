@@ -1,5 +1,10 @@
 """
-generate_ads_xlsx.py — Превращает creatives.json в таблицы для Direct Commander.
+generate_ads_xlsx.py — Превращает 08_creatives.json в таблицы для маркетолога
+и для фолбека в Директ Коммандер.
+
+Штатный путь заливки — MCP (см. references/mcp-account-integration.md, Use case 5).
+Эти файлы нужны, чтобы человек мог посмотреть кампанию целиком, и как запасной
+канал импорта, когда MCP недоступен.
 
 По умолчанию пытается собрать .xlsx через openpyxl. Если openpyxl нет — мягко
 падает в .csv (Direct Commander поддерживает CSV-импорт). В любом случае
@@ -11,7 +16,8 @@ generate_ads_xlsx.py — Превращает creatives.json в таблицы �
                                         [--output-dir <path>]
                                         [--format xlsx|csv|auto]   (по умолч. auto)
 
-JSON-схема creatives.json — см. assets/creatives_schema_combined_example.json.
+JSON-схема — см. assets/creatives_schema_combined_example.json.
+Полная проверка лимитов перед заливкой — python -m scripts.preflight.
 """
 from __future__ import annotations
 
@@ -20,19 +26,18 @@ import csv
 import json
 from pathlib import Path
 
+from scripts.preflight import LIMITS, resolve_creatives_path
+from scripts.preflight import validate_combined_ad as _validate_combined_ad
 
-COMBINED_LIMITS = {
-    "titles_max": 7,
-    "texts_max": 3,
-    "images_max": 5,
-    "videos_max": 6,
-    "title": 56,
-    "text": 81,
-    "display_url_path": 20,
-    "sitelink_title": 30,
-    "sitelink_description": 60,
-    "callout": 25,
-}
+
+# Лимиты Директа живут в одном месте — scripts/preflight.py.
+COMBINED_LIMITS = LIMITS
+
+# Колонок под быстрые ссылки и уточнения в таблице меньше, чем допускает API
+# (8 и 50): файл читает человек, а не Директ. Всё, что не поместилось,
+# попадает в warnings.txt, а не теряется молча.
+SITELINK_COLUMNS = 4
+CALLOUT_COLUMNS = 4
 
 
 COMBINED_HEADERS = [
@@ -49,43 +54,8 @@ COMBINED_HEADERS = [
 
 
 def validate_combined_ad(ad: dict, group_name: str) -> list[str]:
-    warnings = []
-    titles = ad.get("titles", [])
-    texts = ad.get("texts", [])
-    images = ad.get("images", [])
-    videos = ad.get("videos", [])
-
-    if not titles:
-        warnings.append(f"[{group_name}] нет ни одного заголовка")
-    if len(titles) > COMBINED_LIMITS["titles_max"]:
-        warnings.append(f"[{group_name}] заголовков {len(titles)} > {COMBINED_LIMITS['titles_max']}")
-    if len(texts) > COMBINED_LIMITS["texts_max"]:
-        warnings.append(f"[{group_name}] текстов {len(texts)} > {COMBINED_LIMITS['texts_max']}")
-    if len(images) > COMBINED_LIMITS["images_max"]:
-        warnings.append(f"[{group_name}] изображений {len(images)} > {COMBINED_LIMITS['images_max']}")
-    if len(videos) > COMBINED_LIMITS["videos_max"]:
-        warnings.append(f"[{group_name}] видео {len(videos)} > {COMBINED_LIMITS['videos_max']}")
-
-    for i, t in enumerate(titles, 1):
-        if len(t) > COMBINED_LIMITS["title"]:
-            warnings.append(f"[{group_name}] заголовок {i}={t!r} > {COMBINED_LIMITS['title']} ({len(t)} симв)")
-    for i, t in enumerate(texts, 1):
-        if len(t) > COMBINED_LIMITS["text"]:
-            warnings.append(f"[{group_name}] текст {i}={t!r} > {COMBINED_LIMITS['text']} ({len(t)} симв)")
-
-    if ad.get("display_url_path") and len(ad["display_url_path"]) > COMBINED_LIMITS["display_url_path"]:
-        warnings.append(
-            f"[{group_name}] display_url_path={ad['display_url_path']!r} > {COMBINED_LIMITS['display_url_path']}"
-        )
-    for i, sl in enumerate(ad.get("sitelinks", []), 1):
-        if len(sl.get("title", "")) > COMBINED_LIMITS["sitelink_title"]:
-            warnings.append(f"[{group_name}] sitelink{i}.title={sl['title']!r} длиннее {COMBINED_LIMITS['sitelink_title']}")
-        if len(sl.get("description", "")) > COMBINED_LIMITS["sitelink_description"]:
-            warnings.append(f"[{group_name}] sitelink{i}.description={sl['description']!r} длиннее {COMBINED_LIMITS['sitelink_description']}")
-    for i, callout in enumerate(ad.get("callouts", []), 1):
-        if len(callout) > COMBINED_LIMITS["callout"]:
-            warnings.append(f"[{group_name}] callout{i}={callout!r} длиннее {COMBINED_LIMITS['callout']}")
-    return warnings
+    """Обёртка над проверкой из preflight: строки для warnings.txt."""
+    return [f.render() for f in _validate_combined_ad(ad, group_name)]
 
 
 def assemble_combined_ad_rows(creatives: dict) -> tuple[list[list], list[str]]:
@@ -99,7 +69,11 @@ def assemble_combined_ad_rows(creatives: dict) -> tuple[list[list], list[str]]:
         if not ad:
             all_warnings.append(f"[{group['name']}] нет объекта combined_ad — объявление не собрано")
             continue
-        all_warnings.extend(validate_combined_ad(ad, group["name"]))
+        # Посадочная берётся по цепочке объявление → группа → корень артефакта.
+        # Проверять надо итоговую, иначе получим ложную ошибку «нет href».
+        href = ad.get("href") or group.get("url") or default_url
+        all_warnings.extend(validate_combined_ad({**ad, "href": href}, group["name"]))
+
         titles = ad.get("titles", [])[:COMBINED_LIMITS["titles_max"]]
         texts = ad.get("texts", [])[:COMBINED_LIMITS["texts_max"]]
 
@@ -108,13 +82,19 @@ def assemble_combined_ad_rows(creatives: dict) -> tuple[list[list], list[str]]:
             row.append(titles[i] if i < len(titles) else "")
         for i in range(COMBINED_LIMITS["texts_max"]):
             row.append(texts[i] if i < len(texts) else "")
-        row.append(ad.get("href") or group.get("url") or default_url)
+        row.append(href)
         row.append(ad.get("display_url_path", ""))
         row.append(" | ".join(ad.get("images", [])[:COMBINED_LIMITS["images_max"]]))
         row.append(" | ".join(ad.get("videos", [])[:COMBINED_LIMITS["videos_max"]]))
 
-        sitelinks = ad.get("sitelinks", [])[:4]
-        for i in range(4):
+        all_sitelinks = ad.get("sitelinks", [])
+        if len(all_sitelinks) > SITELINK_COLUMNS:
+            all_warnings.append(
+                f"[{group['name']}] быстрых ссылок {len(all_sitelinks)}, в таблицу попадут первые "
+                f"{SITELINK_COLUMNS} — остальные добавь при заливке через MCP или в Коммандере"
+            )
+        sitelinks = all_sitelinks[:SITELINK_COLUMNS]
+        for i in range(SITELINK_COLUMNS):
             if i < len(sitelinks):
                 row.extend([
                     sitelinks[i].get("title", ""),
@@ -123,8 +103,15 @@ def assemble_combined_ad_rows(creatives: dict) -> tuple[list[list], list[str]]:
                 ])
             else:
                 row.extend(["", "", ""])
-        callouts = ad.get("callouts", [])[:4]
-        for i in range(4):
+
+        all_callouts = ad.get("callouts", [])
+        if len(all_callouts) > CALLOUT_COLUMNS:
+            all_warnings.append(
+                f"[{group['name']}] уточнений {len(all_callouts)}, в таблицу попадут первые "
+                f"{CALLOUT_COLUMNS} — остальные добавь при заливке через MCP или в Коммандере"
+            )
+        callouts = all_callouts[:CALLOUT_COLUMNS]
+        for i in range(CALLOUT_COLUMNS):
             row.append(callouts[i] if i < len(callouts) else "")
         rows.append(row)
     return rows, all_warnings
@@ -199,7 +186,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workspace", required=True)
     parser.add_argument("--creatives-json", default=None,
-                        help="Путь к creatives.json. По умолч. — <workspace>/creatives.json")
+                        help="Путь к 08_creatives.json. По умолч. — <workspace>/08_creatives.json")
     parser.add_argument("--output-dir", default=None,
                         help="Куда сохранить ads и keywords. По умолч. — <workspace>")
     parser.add_argument(
@@ -209,13 +196,13 @@ def main() -> None:
     args = parser.parse_args()
 
     workspace = Path(args.workspace).resolve()
-    creatives_json = Path(args.creatives_json) if args.creatives_json else workspace / "creatives.json"
+    creatives_json = resolve_creatives_path(workspace, args.creatives_json)
     output_dir = Path(args.output_dir) if args.output_dir else workspace
 
     if not creatives_json.exists():
         raise SystemExit(
-            f"creatives.json не найден по пути {creatives_json}. "
-            f"Skill должен сформировать его на шаге 10."
+            f"Файл креативов не найден: {creatives_json}. "
+            f"Ожидается {workspace}/08_creatives.json — скилл формирует его на Шаге 8."
         )
 
     creatives = json.loads(creatives_json.read_text(encoding="utf-8"))

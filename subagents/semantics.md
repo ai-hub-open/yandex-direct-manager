@@ -93,6 +93,14 @@ python -m scripts.wordstat_api --mode semantics \
 - `04_keys_excluded.csv` — отброшенные с причиной (ниже 150 / дубль / не в тему)
 - `04_wordstat_filter_summary.md` — краткий отчёт по распределению
 
+**Схема столбцов** — одна на все четыре CSV, канонический источник `references/wordstat-filter.md` → «Артефакты»:
+
+```
+keyword,frequency,freq_tier,narrowing,channel,status,notes
+```
+
+Ключевое: колонка `narrowing` (сужающее слово `+премиум` / `+срочно`, либо `all`) **обязательна** — по ней Шаг 5 раскладывает ключи по кампаниям. В `04_keys_excluded.csv` колонка `status` несёт причину отброса.
+
 ## Что вернуть наверх (КРИТИЧНО)
 
 Сырьё CSV и полные таблицы НЕ выводи. Верни **только это**, ≤ 20 строк:

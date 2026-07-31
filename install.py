@@ -65,7 +65,7 @@ def smoke_test():
     failed = []
 
     for mod in (
-        "scripts.yandex_direct_api",
+        "scripts.preflight",
         "scripts.wordstat_api",
         "scripts.keyword_helper",
         "scripts.forecast_cpc",
@@ -79,17 +79,19 @@ def smoke_test():
         except Exception as e:  # noqa: BLE001
             failed.append(f"{mod}: {e}")
 
+    # openpyxl и python-docx нужны только для файлов-артефактов маркетолога.
+    # Кампания заливается через MCP, поэтому их отсутствие — не отказ установки.
     try:
         import openpyxl  # noqa: F401
         ok(f"openpyxl {openpyxl.__version__}")
-    except Exception as e:  # noqa: BLE001
-        failed.append(f"openpyxl: {e}")
+    except Exception:  # noqa: BLE001
+        print("   openpyxl не установлен — ads.xlsx будет сохранён как CSV")
 
     try:
         import docx  # noqa: F401
         ok("python-docx")
-    except Exception as e:  # noqa: BLE001
-        failed.append(f"python-docx: {e}")
+    except Exception:  # noqa: BLE001
+        print("   python-docx не установлен — медиаплан будет сохранён как Markdown")
 
     if failed:
         print("\n⚠️  Некоторые модули не загрузились:", file=sys.stderr)

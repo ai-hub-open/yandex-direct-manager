@@ -131,25 +131,34 @@
 - ...
 ```
 
-И `09_bidding_strategy.json` (machine-readable для MCP):
+И `09_bidding_strategy.json` (machine-readable для MCP). Каждая фаза описана **параметрами API**, а не свободным текстом: заливка Шага 10 подставляет блок `search_strategy` / `network_strategy` как есть.
 
 ```json
 {
   "campaigns": [
     {
-      "campaign_id": "premium",
-      "channel": "search",
+      "campaign_key": "premium",
+      "channel": "epk",
+      "package_strategy_id": null,
       "phase_1": {
-        "strategy": "max_clicks_with_weekly_budget",
-        "cpc_limit": 250,
-        "weekly_budget": 5000,
+        "search_strategy": {
+          "type": "WB_MAXIMUM_CLICKS",
+          "weekly_spend_limit": 5000,
+          "bid_ceiling": 250
+        },
+        "network_strategy": {"type": "SERVING_OFF"},
         "duration_target_days": 14
       },
       "phase_2_triggers": {
         "min_clicks": 300,
         "min_ctr": 0.04,
         "min_conversions": 5,
-        "switch_action": "tighten_avg_cpc_limit_200"
+        "search_strategy": {
+          "type": "AVERAGE_CPC",
+          "average_cpc": 200,
+          "weekly_spend_limit": 5000
+        },
+        "network_strategy": {"type": "SERVING_OFF"}
       },
       "phase_3_triggers": {
         "min_conv_per_week": 10,
@@ -157,7 +166,13 @@
         "calltracking_required": true,
         "optimization_goal_id": 100001,
         "additional_goal_ids": [100002, 100003],
-        "switch_action": "max_conversions_cpa_2200"
+        "search_strategy": {
+          "type": "PAY_FOR_CONVERSION",
+          "cpa": 2200,
+          "goal_id": 100001,
+          "weekly_spend_limit": 22000
+        },
+        "network_strategy": {"type": "SERVING_OFF"}
       },
       "stop_triggers": [
         {"condition": "ctr_below_2_after_week_1", "action": "review_ads"},
@@ -168,6 +183,33 @@
   ]
 }
 ```
+
+Обрати внимание: **обе стороны стратегии присутствуют в каждой фазе.** При смене стратегии через `campaigns_update` API заменяет её целиком и требует и `search_strategy`, и `network_strategy` — для выключенной стороны `{"type": "SERVING_OFF"}`.
+
+## Маппинг в API
+
+Человеческие названия стратегий Директа не совпадают с типами в API. Таблица — контракт между этим шагом и заливкой; полный список типов и их обязательных параметров — в `yandex-direct-mcp.md`.
+
+| Фаза и название в интерфейсе | `type` | Обязательные параметры | Опциональные |
+|---|---|---|---|
+| Ф1 «Максимум кликов» с недельным бюджетом | `WB_MAXIMUM_CLICKS` | `weekly_spend_limit` | `bid_ceiling` — потолок цены клика |
+| Ф2 то же с ограничением средней цены клика | `AVERAGE_CPC` | `average_cpc` | `weekly_spend_limit` |
+| Ф3 «Максимум конверсий» с оплатой за конверсии | `PAY_FOR_CONVERSION` | `cpa`, `goal_id` | `weekly_spend_limit` |
+| Ф3 «Максимум конверсий» без оплаты за конверсии | `AVERAGE_CPA` | `average_cpa`, `goal_id` | `weekly_spend_limit`, `bid_ceiling` |
+| «Максимум конверсий» с ограничением по ДРР | `AVERAGE_CRR` | `crr` (%), `goal_id` | `weekly_spend_limit` |
+| Ручные ставки на Поиске | `HIGHEST_POSITION` | — | `daily_budget` на кампании + ставки через `keywordbids_set` |
+| Сторона выключена | `SERVING_OFF` | — | — |
+
+**Три правила, которые ломают заливку, если их нарушить:**
+
+1. **Недельный бюджет — это `weekly_spend_limit` внутри стратегии, а не `daily_budget` кампании.** `daily_budget` применим только к ручным ставкам. Передать недельный бюджет как дневной — значит выставить расход в семь раз выше задуманного.
+2. **Деньги передаются в валюте аккаунта** (рубли), конвертация в микроединицы происходит внутри моста. Не умножай на 1 000 000 сам.
+3. **Конверсионные стратегии требуют `goal_id`** — он берётся из `07_metrika_goals.json` (`campaigns_binding[].macro_goal_id`). Нет целей — Фаза 3 недоступна технически, а не только методологически.
+
+### Ставки при разных стратегиях
+
+- **Автостратегия** — ставок нет, есть приоритет фразы: `keywordbids_set({bids: [{ad_group_id, strategy_priority: "NORMAL"}]})`.
+- **Ручная** — целевая ставка из `02_frequency.json`: `keywordbids_set({bids: [{ad_group_id, search_bid: 25}]})`. Уровень группы закрывает все её фразы одним элементом.
 
 ## Гейт с маркетологом
 
@@ -374,7 +416,9 @@
 - **Премиум и малые ниши** — конверсий мало, поодиночке кампании «голодают» по данным и не выходят из обучения.
 - **Дробление по углам/сегментам** — когда одну цель ведут несколько ЕПК по разным углам, каждая набирает мало, а суммарно порог легко перекрывается.
 
-**Рекомендация.** Как только у вас несколько ЕПК по разным углам/сегментам с **одной целью** — заводите их в **пакетную стратегию**, чтобы объединить данные и не «голодать». В `09_bidding_strategy.json` помечайте такие кампании общим полем пула (например `"package_strategy_id": "..."`).
+**Рекомендация.** Как только у вас несколько ЕПК по разным углам/сегментам с **одной целью** — заводите их в **пакетную стратегию**, чтобы объединить данные и не «голодать». В `09_bidding_strategy.json` помечайте такие кампании общим значением `package_strategy_id` (у остальных оно `null`).
+
+⚠️ **Пакетную стратегию MCP не заводит** — её создают в интерфейсе Директа. Заливка ставит кампаниям обычную стратегию Фазы 1, а объединение в пакет уходит в `10_launch_log.md` списком ручной работы. Поле `package_strategy_id` нужно именно для того, чтобы этот пункт не потерялся.
 
 ## Бюджеты: неделя как базовая единица (№255/№272/№277)
 

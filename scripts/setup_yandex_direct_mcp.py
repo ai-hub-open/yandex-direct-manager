@@ -7,7 +7,7 @@ setup_yandex_direct_mcp.py — Установщик MCP yandex-direct в Claude 
 
 После выполнения нужно перезапустить Claude Desktop — после этого в новой сессии
 скилл сможет вызывать MCP-инструменты напрямую (mcp__yandex-direct__yandex_direct_*,
-всего ~30 штук).
+всего 50 штук).
 
 Использование:
     python -m scripts.setup_yandex_direct_mcp \
@@ -223,7 +223,8 @@ def main() -> None:
     print("1. Полностью закрой Claude Desktop (в трее тоже).")
     print("2. Открой заново.")
     print(f"3. В новой сессии появятся инструменты mcp__{args.server_name}__yandex_direct_*")
-    print("   (всего ~30: campaigns, adgroups, ads, keywords, reports, dictionaries).")
+    print("   (всего 50: campaigns, adgroups, ads, adimages, sitelinks, adextensions,")
+    print("    keywords, keywordbids, bidmodifiers, forecast, reports, dictionaries).")
     print("4. Скажи скиллу 'запусти кампанию через MCP' — он использует их напрямую.")
 
 

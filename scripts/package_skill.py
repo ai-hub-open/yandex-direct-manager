@@ -52,7 +52,8 @@ EXCLUDE_GLOBS = {"*.pyc", "*.pyo", "*.swp", "*.bak", "*.tmp"}
 EXCLUDE_FILES = {".DS_Store", ".gitignore", "Thumbs.db"}
 
 # Только в корне скилла исключаем
-ROOT_EXCLUDE_DIRS = {"tests", "assets"}  # evals — только разработчикам, assets — рабочее
+ROOT_EXCLUDE_DIRS = {"tests"}  # тесты нужны только разработчикам; assets/ поставляем —
+                               # схема 08_creatives.json нужна скиллу в рантайме
 
 
 def should_exclude(rel_path: Path) -> bool:
