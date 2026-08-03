@@ -101,6 +101,15 @@ def smoke_test():
 
 
 def main():
+    # Когда stdout перенаправлен в пайп (агент запускает скрипт через subprocess,
+    # редирект в файл, CI), Python берёт кодировку локали — на Windows это cp1251,
+    # где нет '✓'/'⚠'/эмодзи. Без этого печать падала UnicodeEncodeError.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+
     print("=" * 60)
     print("yandex-direct-manager — установка")
     print("=" * 60)
