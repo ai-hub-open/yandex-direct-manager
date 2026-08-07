@@ -60,7 +60,7 @@
 - Быстрые ссылки, уточнения, отображаемая ссылка — те же лимиты, что у ТГО (см. выше).
 - Источник правды по лимитам: https://yandex.ru/support/direct/ru/unified-performance-campaign/about и https://yandex.ru/support/direct/ru/moderation/technical-restrictions
 
-> ⚠️ **Заливка:** текущий MCP создаёт только классический `TextAd` — комбинаторное объявление через `ads_add` не создаётся. Комбинаторное заливают штатно через XLS/XLSX, Директ Коммандер или API (№50). См. Шаг 10 в `SKILL.md` и `references/direct-commander-import.md`.
+> **Заливка:** комбинаторное объявление создаётся через MCP инструментом `ads_add_responsive` (Шаг 10, `references/mcp-account-integration.md` Use case 5). Лимиты длин ниже мост **не проверяет** — их контролирует `scripts/preflight.py` до заливки. Резервный путь при отсутствии MCP — XLS/XLSX и Директ Коммандер (№50), см. `references/direct-commander-import.md`.
 
 ## Дополнительные элементы объявления (точки роста CTR)
 

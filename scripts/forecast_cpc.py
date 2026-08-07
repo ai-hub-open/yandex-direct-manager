@@ -1,19 +1,25 @@
 """
 forecast_cpc.py — оценка CPC по ЖИВОМУ аукциону Яндекс.Директа (Шаг 2 пайплайна).
 
-Заменяет несуществующий метод Forecast.GetForecast (закрыт вместе с API v4).
-В API v5 нет прогноза ставок по произвольным фразам, но есть РЕАЛЬНЫЕ данные
-аукциона по ключам, которые уже заведены в аккаунт — сервис KeywordBids.get.
-Поле Price в AuctionBids — это списываемая цена клика для нужного объёма трафика.
+Разбирает данные аукциона по ключам, которые уже заведены в аккаунт (сервис
+KeywordBids). Поле Price в AuctionBids — списываемая цена клика для нужного
+объёма трафика; по ней считаются три сценария Шага 2.
+
+Это приоритет 2 в оценке CPC. Прогноз по произвольным фразам, которых в
+аккаунте ещё нет, — отдельный инструмент MCP forecast_bids (приоритет 3),
+здесь он не нужен.
 
 Два режима:
-  1. Прямой вызов API (нужен OAuth-токен в YANDEX_DIRECT_TOKEN):
-       python -m scripts.forecast_cpc --keyword-ids 57425858469,57425858470 [--sandbox]
-     Источник ключей — похожие существующие кампании из аудита (Use case 1),
-     либо временная DRAFT-группа с залитыми масками.
-
-  2. Разбор уже полученного ответа (например из MCP yandex_direct_api_call):
+  1. Разбор ответа MCP-инструмента keywordbids_get (основной путь) — сохрани
+     ответ в файл и передай его:
        python -m scripts.forecast_cpc --input _keywordbids_raw.json
+     Понимает конверт MCP {"success": true, "data": {"KeywordBids": [...]}}
+     и сырой ответ API {"result": {"KeywordBids": [...]}}.
+
+  2. Прямой вызов API — для запуска вне MCP-сессии (нужен OAuth-токен
+     в YANDEX_DIRECT_TOKEN):
+       python -m scripts.forecast_cpc --keyword-ids 57425858469,57425858470 [--sandbox]
+     Источник ключей — похожие существующие кампании из аудита (Use case 1).
 
 Вывод — JSON для 02_frequency.json:
   {"base": 28, "optimistic": 27, "pessimistic": 55, "n_keywords": 3,
@@ -81,7 +87,7 @@ def call_keywordbids(token: str, keyword_ids: list[int], sandbox: bool,
 
 def _extract_bid_list(response: dict) -> list[dict]:
     """Достаёт массив KeywordBids из ответа MCP-обёртки или сырого API v5."""
-    # MCP yandex_direct_api_call: {"success": true, "data": {"KeywordBids": [...]}}
+    # Конверт MCP keywordbids_get: {"success": true, "data": {"KeywordBids": [...]}}
     if isinstance(response.get("data"), dict) and "KeywordBids" in response["data"]:
         return response["data"]["KeywordBids"]
     # Сырой API v5: {"result": {"KeywordBids": [...]}}
@@ -150,7 +156,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Оценка CPC по живому аукциону Директа (KeywordBids.get)")
     src = parser.add_mutually_exclusive_group(required=True)
     src.add_argument("--keyword-ids", help="ID ключей через запятую (вызовет API, нужен YANDEX_DIRECT_TOKEN)")
-    src.add_argument("--input", help="Путь к JSON с ответом KeywordBids (из MCP api_call или сырого API)")
+    src.add_argument("--input", help="Путь к JSON с ответом keywordbids_get (конверт MCP или сырой ответ API)")
     parser.add_argument("--sandbox", action="store_true", help="Песочница вместо production")
     parser.add_argument("--client-login", default=None, help="Client-Login для агентских аккаунтов")
     parser.add_argument("--region-factor", type=float, default=1.0,
