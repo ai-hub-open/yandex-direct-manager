@@ -73,7 +73,10 @@ disable-model-invocation: true
 | `references/metrika-goals-setup.md` | Шаг 7 | Шаблоны целей по нишам + Metrika Management API |
 | `references/yandex-direct-specs.md` | Шаг 8 | Лимиты Директа, форматы, операторы |
 | `references/ad-copywriting.md` | Шаг 8 | Формулы заголовков и текстов, требования модерации |
-| `references/rsya-creatives.md` | Шаг 8.5 (заглушка) | ТЗ дизайнеру + плейсхолдер для будущей доработки |
+| `references/rsya-creatives.md` | Шаг 8.5 | Техтребования Директа к РСЯ-креативам, workflow генерации по гейтам, чек-лист модерации |
+| `references/visual-generation.md` | Шаг 8.5 | Генерация картинок через OpenAI (`generate_creative_images.py`): архитектура, brand.json, форматы |
+| `references/video-generation.md` | Шаг 8.5 | Генерация видео через Replicate (`generate_creative_videos.py`) |
+| `references/replicate-models.md` | Шаг 8.5 | Каталог видео-моделей Replicate: цены, качество, рекомендации |
 | `references/bidding-strategy.md` | Шаг 9 | 3-фазная эволюция стратегии торгов |
 | `references/yandex-direct-mcp.md` | Шаг 10 + при сбоях MCP | **Справочник MCP:** сигнатуры инструментов, единицы, `dry_run`, режимы подключения, чего MCP не умеет |
 | `references/mcp-account-integration.md` | Шаги 2, 5, 10 | **Сценарии по шагам:** аудит аккаунта, дедупликация, оценка CPC, регионы и полная последовательность заливки (Use case 5) |
@@ -87,7 +90,11 @@ disable-model-invocation: true
 - `scripts/generate_ads_xlsx.py` — `08_creatives.json` → xlsx для маркетолога и для фолбека в Коммандер (или CSV)
 - `scripts/generate_media_plan.py` — собирает артефакты пайплайна в `media_plan.docx`
 - `scripts/keyword_helper.py` — операторы соответствия, базовые минус-листы
-- `scripts/forecast_cpc.py` — разбор живого аукциона (ответ `keywordbids_get`) в base/opt/pess CPC; умеет звать API сам при `YANDEX_DIRECT_TOKEN`
+- `scripts/forecast_cpc.py` — оценка CPC: разбор `keywordbids_get`, прямой аукцион, либо прогноз по фразам (v4 / Click.ru DRAFT) без MCP `forecast_bids`
+- `scripts/generate_creative_images.py` — генерация картинок Шага 8.5 (OpenAI gpt-image-1)
+- `scripts/generate_creative_videos.py` — генерация видео Шага 8.5 (Replicate)
+- `scripts/validate_assets.py` — проверка картинок/видео под техтребования Директа
+- `scripts/manage_credentials.py` / `scripts/credentials.py` — реестр ключей (openai, replicate, yandex_direct, clickru) вне рабочей папки
 - `scripts/wordstat_api.py` — клиент Yandex Cloud Search API (Wordstat `topRequests`): частотности масок (Шаг 1, `--mode masks`) и **рекурсивный сбор семантики волнами** (Шаг 3, `--mode semantics`: ассоциации + углубление на найденном + якоря `--anchors-file` + стоп-условия); env `WORDSTAT_API_KEY` + `WORDSTAT_FOLDER_ID`; `--check` для проверки подключения
 - `scripts/setup_yandex_direct_mcp.py` — подключение MCP yandex-direct; **умеет только конфиг Claude Desktop** (вызывается, если на каком-то шаге выяснится, что MCP не работает). В других средах подключение MCP делает человек — скилл его не настраивает, а идёт по ветке без MCP
 
@@ -312,22 +319,40 @@ python -m scripts.wordstat_api --mode semantics \
 
 **[GATE: маркетолог]** «Объявления принимаешь?»
 
-## Шаг 8.5. Визуалы (РСЯ / комбинаторное объявление) (заглушка)
+## Шаг 8.5. Визуалы (генерация картинок и видео)
 
-⚠️ **Эта часть пайплайна пока не проработана.** Скилл оставляет в рабочей папке плейсхолдер `08_5_rsya_creatives_TODO.md` со списком того, что нужно подготовить, и **не задерживает на этом запуск**.
+**Прочти `references/rsya-creatives.md` и `references/visual-generation.md` целиком**
+(для видео — ещё `references/video-generation.md`).
 
-Картинки/видео — это ассеты комбинаторного объявления Шага 8 (до 5 картинок, до 6 видео на объявление), а не отдельная РСЯ-кампания. Если ассеты есть — прикладываем к `combined_ad`; нет — объявление заливается без них, здесь остаётся TODO.
+Если в брифе только Поиск — шаг пропускается. Если РСЯ есть:
 
-Если в брифе РСЯ **не используется** (только Поиск) — Шаг 8.5 пропускается полностью.
+1. **Pre-flight:** собери `brand.json` в рабочей папке из брифа (product_name, цвета
+   HEX, style_references). Проверь ключи: `python -m scripts.manage_credentials list`.
+   Нет ключа openai — попроси пользователя прислать в чат и сохрани:
+   `python -m scripts.manage_credentials set openai --key <KEY>`. Ключ НИКОГДА
+   не пишем в артефакты рабочей папки.
+2. **Концепции:** добавь в `08_creatives.json` каждой группе
+   `combined_ad.visual_concepts` (2 концепции: id A/B, type, angle, usp_on_creative —
+   УТП из Шага 1, углы из гипотез). **[GATE: маркетолог подтверждает концепции]**
+3. **Dry-run:** `python -m scripts.generate_creative_images --workspace <path> --dry-run`
+   → прочитай 1–2 промпта из `assets/prompts/`.
+4. **Тест:** `... --concept A` → одна картинка. **[GATE: нравится? иначе — правь
+   концепцию/шаблон и --force]**
+5. **Полный прогон:** `python -m scripts.generate_creative_images --workspace <path>`
+   → до 5 картинок на группу (A×3 форматов + B×2).
+6. **Видео (опционально):** выбери модель по `references/replicate-models.md`,
+   `python -m scripts.generate_creative_videos --workspace <path> --model <slug>` —
+   1 ролик 5–10 с, 16:9. Ключ replicate — как в п.1. Предупреди о стоимости до запуска.
+7. **Валидация:** `python -m scripts.validate_assets --workspace <path>` — все ассеты
+   должны пройти (450–5000 px, соотношения, ≤10/100 МБ).
+8. **[GATE: маркетолог смотрит assets/images и assets/videos перед заливкой]**
 
-Если РСЯ есть, скилл собирает в плейсхолдер:
-- **Список форматов** под РСЯ из `references/rsya-creatives.md` (1080×1080, 1080×607, 1080×1350 + видео)
-- **Доступные ассеты** из брифа: лого, фото продукта, цвета бренда (HEX), шрифты
-- **Заметки**: что нужно дозаказать у дизайнера
+**Фолбек без ключей:** собери `08_5_rsya_creatives_TODO.md` (ТЗ дизайнеру по
+`references/rsya-creatives.md`), кампания заливается без визуалов, TODO в launch log.
 
-В кампаниях РСЯ заливаются **без визуалов** (либо с дефолтными от Яндекса) — креативы добавляет маркетолог или дизайнер позже через UI или отдельной итерацией с этим скиллом.
-
-См. подробнее `references/rsya-creatives.md`.
+**Артефакты:** `assets/images/*.png`, `assets/videos/*.mp4`, `assets/prompts/`,
+`assets/generation_log.json`, `assets/validation_report.json`; обновлённый
+`08_creatives.json` (`visual_concepts`, `images`, `videos`).
 
 ## Шаг 9. Стратегия торгов
 
