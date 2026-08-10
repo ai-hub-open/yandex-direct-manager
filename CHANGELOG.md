@@ -8,6 +8,7 @@
 
 - **Шаг 8.5 больше не заглушка.** Генерация картинок (OpenAI) и видео (Replicate) с гейтами, валидация ассетов под техтребования Директа. Справочники `visual-generation.md`, `video-generation.md`, `replicate-models.md`; скрипты `generate_creative_images.py`, `generate_creative_videos.py`, `validate_assets.py`, `credentials.py` / `manage_credentials.py`.
 - **`forecast_cpc.py` — два бэкенда прогноза по произвольным фразам** без MCP: прямой токен Яндекса через Live API v4 и Click.ru через временный DRAFT. Закрывает дыру Шага 2 под Click.ru, где `forecast_bids` недоступен. Ссылки на несуществующий `yandex_direct_api_call` заменены на `keywordbids_get`.
+- **Тесты как обязательный гейт:** `pytest` — ~150 проверок тел запросов, валидации ассетов, выбора бэкенда прогноза и генерации визуалов без обращения к сети.
 
 ## 0.9.1 — 2026-08-03
 
