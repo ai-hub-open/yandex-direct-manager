@@ -8,3 +8,9 @@ openpyxl>=3.1
 
 # Медиаплан в формате .docx
 python-docx>=1.0
+
+# Генерация визуалов (Шаг 8.5): OpenAI Images API, обработка/валидация
+# картинок, HTTP-запросы к Replicate
+openai>=1.40
+Pillow>=10.0
+requests>=2.31

@@ -72,6 +72,9 @@ def smoke_test():
         "scripts.generate_ads_xlsx",
         "scripts.generate_media_plan",
         "scripts.setup_yandex_direct_mcp",
+        "scripts.credentials",
+        "scripts.validate_assets",
+        "scripts.prompt_templates",
     ):
         try:
             __import__(mod)

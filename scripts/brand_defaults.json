@@ -1,0 +1,16 @@
+{
+  "_doc": "Defaults для brand.json в рабочей папке кампании direct-campaigns/<slug>/. Переопределяются локальным brand.json.",
+  "product_name": "Product",
+  "primary_color": "#2D5BFF",
+  "accent_color": "#22C55E",
+  "neutral_dark": "#1A1A1A",
+  "neutral_light": "#F5F5F5",
+  "voice": "professional_friendly",
+  "style_references": [
+    "modern Russian e-commerce banners",
+    "Yandex Market promo cards",
+    "clean flat advertising design"
+  ],
+  "logo_url": null,
+  "logo_text_fallback": null
+}

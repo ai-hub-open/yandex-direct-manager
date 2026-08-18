@@ -178,6 +178,17 @@ pip install -r requirements.txt
 - без `openpyxl` таблица объявлений сохраняется в CSV;
 - без `python-docx` медиаплан сохраняется в Markdown.
 
+## Тесты
+
+Мок-тесты — обязательный гейт перед мержем. Сеть не трогают: OpenAI, Replicate и Директ подменяются. Реальные ключи в `~/.yandex-direct-manager` не читаются.
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+Новый скрипт в `scripts/` — новый файл `tests/test_<module>.py` по образцу `test_preflight.py`: бизнес-правило, а не формулировка сообщения.
+
 ## Безопасность
 
 - секреты хранятся только в `.env` или переменных окружения;
