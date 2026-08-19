@@ -11,6 +11,7 @@
 - **Установщик переписан.** `scripts/setup_yandex_direct_mcp.py` больше не требует путь к локальному репо и умеет не только Claude Desktop: цели `cursor` (`~/.cursor/mcp.json`), `cursor-project`, `claude-code` (`.mcp.json`), `claude-desktop` (мост `mcp-remote`), `all`; флаги `--dry-run`, `--remove`, `--server direct|wordstat|both`. Токен и логин подставляются из аргументов, env или `manage_credentials`.
 - **Ограничение хоста для картинок.** `adimages_add` принимает `file_path` на диске сервера — файлы маркетолога хосту недоступны. Шаг 10 и Use case 5: сначала проверка URL-параметра в `tools/list`, иначе заливка без картинок и пункт ручной работы в `10_launch_log.md`.
 - **Общий справочник подключения** — `docs/hosted-mcp-setup.md` в корне репозитория пакета (три сервера, таблица заголовков, конфиги трёх клиентов, проверка связи).
+- **Имя скилла в `SKILL.md` — `yandex-direct-manager`** (как папка репозитория и `.skill`-архив), вместо устаревшего `yandex-direct-create-pipeline`. Автоподхват по description сохранён (`disable-model-invocation` снят).
 
 ## 0.10.0 — 2026-08-10
 
