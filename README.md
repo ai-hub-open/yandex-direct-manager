@@ -48,13 +48,13 @@
 
 | Скрипт | Назначение |
 |---|---|
-| `wordstat_api.py` | проверка масок и сбор семантики из Вордстата |
+| `wordstat_api.py` | проверка масок и сбор семантики из Вордстата (фолбек без MCP `yandex-wordstat`) |
 | `forecast_cpc.py` | оценка цены клика по данным аукциона для фраз, уже заведённых в аккаунте |
 | `keyword_helper.py` | операторы соответствия, удаление дублей и базовые минус-листы |
 | `preflight.py` | проверка объявлений против ограничений Директа перед загрузкой |
 | `generate_ads_xlsx.py` | таблица объявлений и ключей для маркетолога и для Директ Коммандера |
 | `generate_media_plan.py` | итоговый медиаплан |
-| `setup_yandex_direct_mcp.py` | подключение MCP-сервера к настольному агенту |
+| `setup_yandex_direct_mcp.py` | подключение хостовых MCP `yandex-direct` и `yandex-wordstat` к Cursor / Claude Code / Claude Desktop |
 
 Если библиотек для XLSX и DOCX нет, генераторы сохраняют CSV и Markdown.
 
@@ -102,10 +102,10 @@
 
 Необязательно:
 
-- ключ Yandex Cloud Search API для автоматического сбора семантики;
-- OAuth-токен Яндекс Директа для загрузки через API;
+- доступ к хостовым MCP `yandex-direct` и `yandex-wordstat` (aihub.click.ru, один API-токен click.ru) — основной путь для live-данных, сбора семантики и заливки;
+- ключ Yandex Cloud Search API — фолбек сбора семантики, когда MCP не подключён;
 - OAuth-токен Яндекс Метрики для создания целей;
-- MCP-сервер `yandex-direct-mcp`.
+- OAuth-токен Яндекс Директа — только для локального фолбек-режима MCP-сервера.
 
 Без ключей пакет сохраняет готовые файлы для ручной работы через Директ Коммандер и интерфейс Директа.
 
@@ -147,7 +147,16 @@ Copy-Item -Recurse yandex-direct-manager "$env:USERPROFILE\.claude\skills\"
 
 ## Ключи и доступы
 
-Создайте `.env` из шаблона:
+**Основной путь — хостовые MCP aihub.click.ru.** Один API-токен click.ru покрывает Директ и Вордстат, ключи Яндекса не нужны:
+
+```bash
+python -m scripts.setup_yandex_direct_mcp \
+  --token <CLICK_RU_TOKEN> --client-login <ЛОГИН_ДИРЕКТА> --target all
+```
+
+Подробности — в [`docs/hosted-mcp-setup.md`](docs/hosted-mcp-setup.md) и `references/yandex-direct-mcp.md` → «Подключение».
+
+Переменные ниже — для фолбек-режимов без MCP. Создайте `.env` из шаблона:
 
 ```bash
 cp .env.example .env

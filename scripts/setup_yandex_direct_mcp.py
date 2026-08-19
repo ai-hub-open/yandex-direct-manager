@@ -1,26 +1,36 @@
 """
-setup_yandex_direct_mcp.py — Установщик MCP yandex-direct в Claude Desktop.
+setup_yandex_direct_mcp.py — подключает хостовые MCP aihub.click.ru к MCP-клиентам.
 
-Берёт локальную копию MCP-сервера (Bun + TS), проверяет окружение,
-прописывает блок mcpServers.yandex-direct в claude_desktop_config.json
-с правильным абсолютным путём, токеном и режимом (sandbox/production/Click.ru).
+Серверы уже подняты на стороне aihub — клонировать репозитории и ставить Bun
+НЕ нужно. Скрипт только дописывает блоки `mcpServers` в конфиги клиентов
+(с бэкапом; существующие серверы сохраняются).
 
-После выполнения нужно перезапустить Claude Desktop — после этого в новой сессии
-скилл сможет вызывать MCP-инструменты напрямую (mcp__yandex-direct__yandex_direct_*,
-всего 50 штук).
+Подключаемые серверы (--server, по умолчанию both):
+- yandex-direct    → https://direct-mcp.aihub.click.ru/mcp    (50 инструментов Direct API)
+- yandex-wordstat  → https://wordstat-mcp.aihub.click.ru/mcp  (частотность и семантика Wordstat)
+
+Авторизация у обоих — API-токен click.ru
+(https://click.ru/userinfo.html → «API Token» → «Создать»).
+
+Цели (--target, можно несколько):
+- cursor          ~/.cursor/mcp.json (глобально для Cursor)
+- cursor-project  .cursor/mcp.json в текущей папке
+- claude-code     .mcp.json в текущей папке
+- claude-desktop  claude_desktop_config.json (через stdio-мост mcp-remote, нужен Node.js)
+- all             cursor + claude-code + claude-desktop
 
 Использование:
     python -m scripts.setup_yandex_direct_mcp \
-        --mcp-path D:\\yandex-direct-mcp \
-        [--mode direct|sandbox|clickru] \
-        [--token <OAUTH_TOKEN>] \
-        [--click-ru-token <X-Auth-Token>] \
-        [--click-ru-user-id <UserId>] \
-        [--client-login <login>] \
-        [--config-path <path-to-claude_desktop_config.json>] \
-        [--dry-run]
+        --token <CLICK_RU_TOKEN> --client-login <ЛОГИН_ДИРЕКТА> \
+        [--click-ru-user-id <ID>] \
+        [--target all] [--server both] [--dry-run] [--remove]
 
-Скрипт ничего не отправляет наружу и маскирует токен в логах.
+Токен/логин можно не передавать, если они сохранены:
+    python -m scripts.manage_credentials set clickru
+    python -m scripts.manage_credentials set clickru_login
+
+Скрипт ничего не запускает и не отправляет наружу; токен в логах маскируется.
+После записи — перезапусти клиента и проверь связь (см. вывод «Дальше»).
 """
 from __future__ import annotations
 
@@ -29,203 +39,281 @@ import json
 import os
 import platform
 import shutil
-import subprocess
+import sys
 from pathlib import Path
 
+try:
+    from scripts.credentials import load_api_key, CredentialNotFound
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    try:
+        from scripts.credentials import load_api_key, CredentialNotFound
+    except ImportError:
+        load_api_key = None
 
-def default_config_path() -> Path | None:
+        class CredentialNotFound(Exception):
+            pass
+
+
+DIRECT_URL = "https://direct-mcp.aihub.click.ru/mcp"
+WORDSTAT_URL = "https://wordstat-mcp.aihub.click.ru/mcp"
+
+DIRECT_SERVER = "yandex-direct"
+WORDSTAT_SERVER = "yandex-wordstat"
+
+
+# ---------- пути конфигов ----------
+
+def cursor_user_config() -> Path:
+    return Path.home() / ".cursor" / "mcp.json"
+
+
+def cursor_project_config() -> Path:
+    return Path.cwd() / ".cursor" / "mcp.json"
+
+
+def claude_code_config() -> Path:
+    return Path.cwd() / ".mcp.json"
+
+
+def claude_desktop_config() -> Path | None:
     system = platform.system()
-    if system == "Windows":
-        appdata = os.environ.get("APPDATA")
-        if not appdata:
-            return None
-        return Path(appdata) / "Claude" / "claude_desktop_config.json"
     if system == "Darwin":
         return Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
-    if system == "Linux":
-        xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-        return Path(xdg) / "Claude" / "claude_desktop_config.json"
+    if system == "Windows":
+        appdata = os.environ.get("APPDATA")
+        return Path(appdata) / "Claude" / "claude_desktop_config.json" if appdata else None
+    xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+    return Path(xdg) / "Claude" / "claude_desktop_config.json"
+
+
+TARGETS = {
+    "cursor": cursor_user_config,
+    "cursor-project": cursor_project_config,
+    "claude-code": claude_code_config,
+    "claude-desktop": claude_desktop_config,
+}
+
+
+# ---------- заголовки и блоки ----------
+
+def direct_headers(token: str, client_login: str | None, user_id: str | None) -> dict:
+    headers = {"Authorization": f"Bearer {token}"}
+    if client_login:
+        headers["X-Client-Login"] = client_login
+    if user_id:
+        headers["X-Click-Ru-User-Id"] = user_id
+    return headers
+
+
+def wordstat_headers(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def http_entry(url: str, headers: dict, *, with_type: bool) -> dict:
+    entry = {"url": url, "headers": headers}
+    if with_type:
+        entry = {"type": "http", **entry}
+    return entry
+
+
+def desktop_bridge_entry(url: str, headers: dict) -> dict:
+    args = ["-y", "mcp-remote", url]
+    for key, value in headers.items():
+        args += ["--header", f"{key}: {value}"]
+    return {"command": "npx", "args": args}
+
+
+def build_entry(target: str, url: str, headers: dict) -> dict:
+    if target == "claude-desktop":
+        return desktop_bridge_entry(url, headers)
+    return http_entry(url, headers, with_type=(target == "claude-code"))
+
+
+# ---------- запись конфигов ----------
+
+def load_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"Не смог распарсить {path}: {e}")
+
+
+def save_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        backup = path.with_suffix(path.suffix + ".bak")
+        shutil.copy2(path, backup)
+        print(f"  Бэкап: {backup}")
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def mask(value: str) -> str:
+    return f"{value[:4]}...{value[-2:]}" if len(value) > 6 else "***"
+
+
+def mask_entry(entry: dict) -> dict:
+    entry = json.loads(json.dumps(entry))
+    headers = entry.get("headers")
+    if headers:
+        for key in headers:
+            if key.lower() in {"authorization", "x-click-ru-token", "x-auth-token"}:
+                headers[key] = mask(headers[key])
+    if entry.get("args"):
+        entry["args"] = [
+            arg.split(": ", 1)[0] + ": " + mask(arg.split(": ", 1)[1])
+            if ": " in arg and arg.split(": ", 1)[0].lower() in {"authorization", "x-click-ru-token"}
+            else arg
+            for arg in entry["args"]
+        ]
+    return entry
+
+
+def apply_entries(config_path: Path, entries: dict[str, dict], *, remove: bool, dry_run: bool) -> None:
+    config = load_json(config_path)
+    servers = config.setdefault("mcpServers", {})
+    if not isinstance(servers, dict):
+        raise SystemExit(f"{config_path}: поле mcpServers не объект, правлю вручную не буду")
+
+    for name, entry in entries.items():
+        if remove:
+            if servers.pop(name, None) is not None:
+                print(f"  - {name}: удалён")
+            else:
+                print(f"  - {name}: не был записан, пропускаю")
+        else:
+            replaced = name in servers
+            servers[name] = entry
+            print(f"  - {name}: {'перезаписан' if replaced else 'добавлен'}")
+            print(f"    {json.dumps(mask_entry(entry), ensure_ascii=False)}")
+
+    if not servers and remove:
+        config.pop("mcpServers", None)
+
+    if dry_run:
+        print(f"[dry-run] Не пишу в {config_path}.")
+        return
+    save_json(config_path, config)
+    print(f"  Записано: {config_path}")
+
+
+# ---------- креды ----------
+
+def resolve_credential(arg_value: str | None, env_name: str, service: str, *, required: bool) -> str | None:
+    if arg_value:
+        return arg_value
+    if os.environ.get(env_name):
+        return os.environ[env_name]
+    if load_api_key:
+        try:
+            return load_api_key(service)
+        except CredentialNotFound:
+            pass
+        except Exception:
+            pass
+    if required:
+        raise SystemExit(
+            f"Нужен {env_name}. Варианты:\n"
+            f"  --token <...> (аргумент) или env {env_name}\n"
+            f"  python -m scripts.manage_credentials set {service}\n"
+            f"Токен создаётся в профиле click.ru: https://click.ru/userinfo.html → «API Token»."
+        )
     return None
 
 
-def check_bun() -> str | None:
-    return shutil.which("bun")
-
-
-def bun_install_hint() -> str:
-    if platform.system() == "Windows":
-        return 'Установить Bun: открой PowerShell и выполни\n  powershell -c "irm bun.sh/install.ps1 | iex"'
-    return "Установить Bun:\n  curl -fsSL https://bun.sh/install | bash"
-
-
-def verify_mcp_path(mcp_path: Path) -> tuple[bool, str]:
-    if not mcp_path.exists():
-        return False, f"Папка {mcp_path} не найдена"
-    if not (mcp_path / "package.json").exists():
-        return False, f"В {mcp_path} нет package.json"
-    if not (mcp_path / "src" / "index.ts").exists():
-        return False, f"В {mcp_path}/src/index.ts нет точки входа"
-    if not (mcp_path / "node_modules").exists():
-        return False, f"В {mcp_path} не установлены зависимости. Запусти: cd \"{mcp_path}\" && bun install"
-    return True, "OK"
-
-
-def build_server_block(
-    mcp_path: Path,
-    mode: str,
-    token: str | None,
-    click_ru_token: str | None,
-    click_ru_user_id: str | None,
-    client_login: str | None,
-) -> dict:
-    args_path = str(mcp_path / "src" / "index.ts").replace("\\", "/")
-    env: dict[str, str] = {}
-    if mode == "direct":
-        if not token:
-            raise ValueError("Для режима direct нужен --token (OAuth Яндекс.Директа)")
-        env["YANDEX_DIRECT_TOKEN"] = token
-        env["YANDEX_DIRECT_SANDBOX"] = "false"
-    elif mode == "sandbox":
-        if not token:
-            raise ValueError("Для режима sandbox нужен --token (sandbox-токен)")
-        env["YANDEX_DIRECT_TOKEN"] = token
-        env["YANDEX_DIRECT_SANDBOX"] = "true"
-    elif mode == "clickru":
-        if not click_ru_token or not client_login:
-            raise ValueError(
-                "Для clickru нужны --click-ru-token и --client-login. "
-                "Опционально --click-ru-user-id для мастер-аккаунтов."
-            )
-        env["CLICK_RU_PROXY"] = "true"
-        env["CLICK_RU_TOKEN"] = click_ru_token
-        env["CLICK_RU_CLIENT_LOGIN"] = client_login
-        if click_ru_user_id:
-            env["CLICK_RU_USER_ID"] = click_ru_user_id
-    else:
-        raise ValueError(f"Неизвестный режим: {mode}")
-
-    return {
-        "command": "bun",
-        "args": ["run", args_path],
-        "env": env,
-    }
-
-
-def update_config(config_path: Path, server_block: dict, server_name: str = "yandex-direct") -> tuple[dict, dict | None]:
-    if config_path.exists():
-        try:
-            config = json.loads(config_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            raise SystemExit(f"Не смог распарсить {config_path}: {e}")
-    else:
-        config = {}
-
-    if not isinstance(config.get("mcpServers"), dict):
-        config["mcpServers"] = {}
-
-    previous = config["mcpServers"].get(server_name)
-    config["mcpServers"][server_name] = server_block
-    return config, previous
-
-
-def mask_env(env: dict) -> dict:
-    masked = {}
-    secrets = {"YANDEX_DIRECT_TOKEN", "CLICK_RU_TOKEN"}
-    for k, v in env.items():
-        if k in secrets and v:
-            masked[k] = f"{v[:4]}...{v[-2:]}" if len(v) > 6 else "***"
-        else:
-            masked[k] = v
-    return masked
-
+# ---------- main ----------
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Установить yandex-direct MCP в Claude Desktop")
-    parser.add_argument("--mcp-path", required=True, help="Путь к локальной папке MCP")
-    parser.add_argument(
-        "--mode", choices=["direct", "sandbox", "clickru"], default="sandbox",
-        help="Режим: direct/sandbox/clickru",
+    parser = argparse.ArgumentParser(
+        description="Подключить хостовые MCP (yandex-direct / yandex-wordstat) к Cursor, Claude Code, Claude Desktop",
     )
-    parser.add_argument("--token", help="OAuth-токен Yandex Direct")
-    parser.add_argument("--click-ru-token", help="X-Auth-Token из api.click.ru")
-    parser.add_argument("--click-ru-user-id", help="X-Auth-UserId")
-    parser.add_argument("--client-login", help="Client-Login Яндекс.Директа")
-    parser.add_argument("--server-name", default="yandex-direct")
-    parser.add_argument("--config-path", help="Путь к claude_desktop_config.json")
-    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--token", help="API-токен click.ru (или env CLICK_RU_TOKEN, или manage_credentials clickru)")
+    parser.add_argument("--client-login", help="Логин аккаунта Яндекс.Директа (env CLICK_RU_CLIENT_LOGIN, manage_credentials clickru_login)")
+    parser.add_argument("--click-ru-user-id", help="ID пользователя click.ru — только для мастер-аккаунта")
+    parser.add_argument(
+        "--server", choices=["direct", "wordstat", "both"], default="both",
+        help="Какой сервер подключать (по умолчанию both — скиллу нужны оба)",
+    )
+    parser.add_argument(
+        "--target", action="append",
+        choices=["cursor", "cursor-project", "claude-code", "claude-desktop", "all"],
+        help="Куда писать конфиг. Можно несколько раз. По умолчанию: cursor",
+    )
+    parser.add_argument("--remove", action="store_true", help="Удалить записи серверов из конфигов")
+    parser.add_argument("--dry-run", action="store_true", help="Показать, что будет записано, без записи")
     args = parser.parse_args()
 
-    mcp_path = Path(args.mcp_path).resolve()
-    config_path = Path(args.config_path).resolve() if args.config_path else default_config_path()
-    if not config_path:
-        raise SystemExit(f"Не нашёл стандартный путь к Claude Desktop config для {platform.system()}. Передай --config-path.")
+    targets = args.target or ["cursor"]
+    if "all" in targets:
+        targets = ["cursor", "claude-code", "claude-desktop"]
 
-    print(f"=== yandex-direct MCP setup ===")
-    print(f"MCP path:    {mcp_path}")
-    print(f"Config:      {config_path}")
-    print(f"Mode:        {args.mode}")
-    print(f"Server name: {args.server_name}")
+    server_names = {
+        "direct": [DIRECT_SERVER],
+        "wordstat": [WORDSTAT_SERVER],
+        "both": [DIRECT_SERVER, WORDSTAT_SERVER],
+    }[args.server]
+
+    token = None
+    client_login = None
+    if not args.remove:
+        token = resolve_credential(args.token, "CLICK_RU_TOKEN", "clickru", required=True)
+        if DIRECT_SERVER in server_names:
+            client_login = resolve_credential(
+                args.client_login, "CLICK_RU_CLIENT_LOGIN", "clickru_login", required=False,
+            )
+            if not client_login:
+                print("⚠️  --client-login не задан: запишу только Authorization. "
+                      "Если Direct ответит 401/ошибкой доступа — перезапусти с --client-login.")
+
+    all_headers: dict[str, dict] = {}
+    if token:
+        if DIRECT_SERVER in server_names:
+            all_headers[DIRECT_SERVER] = direct_headers(token, client_login, args.click_ru_user_id)
+        if WORDSTAT_SERVER in server_names:
+            all_headers[WORDSTAT_SERVER] = wordstat_headers(token)
+
+    urls = {DIRECT_SERVER: DIRECT_URL, WORDSTAT_SERVER: WORDSTAT_URL}
+
+    print("=== Хостовые MCP aihub.click.ru ===")
+    print(f"Серверы: {', '.join(server_names)}")
+    print(f"Цели:    {', '.join(targets)}")
     print()
 
-    bun = check_bun()
-    if not bun:
-        print("Bun не найден в PATH. " + bun_install_hint())
-        print("MCP не запустится без Bun.")
-    else:
-        print(f"Bun: {bun}")
-        try:
-            ver = subprocess.run([bun, "--version"], capture_output=True, text=True, timeout=5)
-            print(f"  Версия: {ver.stdout.strip()}")
-        except Exception:
-            pass
+    for target in targets:
+        path = TARGETS[target]()
+        if path is None:
+            print(f"[{target}] Не нашёл стандартный путь конфига для {platform.system()}, пропускаю.")
+            continue
+        print(f"[{target}] {path}")
+        if target == "claude-desktop" and not args.remove:
+            print("  Формат: stdio-мост npx mcp-remote (нужен Node.js в PATH)")
+        entries = {
+            name: build_entry(target, urls[name], all_headers.get(name, {}))
+            for name in server_names
+        }
+        apply_entries(path, entries, remove=args.remove, dry_run=args.dry_run)
+        print()
 
-    ok, msg = verify_mcp_path(mcp_path)
-    if not ok:
-        print(f"MCP: {msg}")
-        raise SystemExit(1)
-    print(f"MCP: {msg}")
-
-    try:
-        server_block = build_server_block(
-            mcp_path=mcp_path, mode=args.mode, token=args.token,
-            click_ru_token=args.click_ru_token, click_ru_user_id=args.click_ru_user_id,
-            client_login=args.client_login,
-        )
-    except ValueError as e:
-        raise SystemExit(f"Параметры: {e}")
-
-    print()
-    print(f"Будет записан блок mcpServers.{args.server_name}:")
-    print(json.dumps({
-        "command": server_block["command"],
-        "args": server_block["args"],
-        "env": mask_env(server_block["env"]),
-    }, indent=2, ensure_ascii=False))
-
-    new_config, previous = update_config(config_path, server_block, args.server_name)
-    if previous:
-        print(f"\nВ конфиге уже был блок '{args.server_name}'. Перезаписываю.")
-
-    if args.dry_run:
-        print(f"\n[dry-run] Не пишу в {config_path}.")
+    if args.remove or args.dry_run:
         return
 
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    if config_path.exists():
-        backup = config_path.with_suffix(config_path.suffix + ".bak")
-        shutil.copy2(config_path, backup)
-        print(f"\nБэкап старого конфига: {backup}")
-
-    config_path.write_text(json.dumps(new_config, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"Записал в {config_path}")
-    print()
     print("=== Дальше ===")
-    print("1. Полностью закрой Claude Desktop (в трее тоже).")
-    print("2. Открой заново.")
-    print(f"3. В новой сессии появятся инструменты mcp__{args.server_name}__yandex_direct_*")
-    print("   (всего 50: campaigns, adgroups, ads, adimages, sitelinks, adextensions,")
-    print("    keywords, keywordbids, bidmodifiers, forecast, reports, dictionaries).")
-    print("4. Скажи скиллу 'запусти кампанию через MCP' — он использует их напрямую.")
+    if "claude-desktop" in targets:
+        print("1. Полностью закрой Claude Desktop (в трее тоже) и открой заново.")
+    if "cursor" in targets or "cursor-project" in targets:
+        print("1. Cursor: Settings → MCP — серверы должны стать зелёными (или перезапусти Cursor).")
+    if "claude-code" in targets:
+        print("1. Claude Code: новая сессия подхватит .mcp.json автоматически.")
+    print("2. Проверь связь читающими вызовами:")
+    if DIRECT_SERVER in server_names:
+        print("   - Direct:   campaigns_get с limit=1")
+    if WORDSTAT_SERVER in server_names:
+        print("   - Wordstat: «пробей частотность фразы „кофеварка“»")
+    print("3. Ошибка 401 = токен click.ru недействителен или не хватает --client-login.")
+    print()
+    print("Справочник подключения: docs/hosted-mcp-setup.md")
 
 
 if __name__ == "__main__":
