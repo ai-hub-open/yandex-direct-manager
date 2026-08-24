@@ -2,6 +2,17 @@
 
 Версии — [semver](https://semver.org/lang/ru/): до 1.0 состав шагов и материалов может меняться.
 
+## 0.11.0 — 2026-08-19
+
+Переход на хостовые MCP aihub.click.ru: локальный Bun и клон репозитория больше не нужны.
+
+- **Основной путь — хостовые серверы.** `yandex-direct` (`https://direct-mcp.aihub.click.ru/mcp`) и новый `yandex-wordstat` (`https://wordstat-mcp.aihub.click.ru/mcp`). Авторизация у обоих — один API-токен click.ru (проверено прогоном: без токена 401, с недействительным — «токен недействителен»). Следствия режима Click.ru сохраняются: `forecast_bids` недоступен, песочницы нет.
+- **Wordstat переехал в MCP.** Новый справочник `references/wordstat-mcp.md`: частотности масок (Шаг 1) и рекурсивный сбор семантики волнами (Шаг 3) крутятся через инструменты сервера; `scripts/wordstat_api.py` (ключ Cloud Search API) остаётся фолбеком, дальше — браузерный пробив. Цепочка приоритетов: MCP → скрипт → браузер → список от маркетолога. В `_state.json` появилось `wordstat_mcp_available` рядом с `wordstat_api_available`.
+- **Установщик переписан.** `scripts/setup_yandex_direct_mcp.py` больше не требует путь к локальному репо и умеет не только Claude Desktop: цели `cursor` (`~/.cursor/mcp.json`), `cursor-project`, `claude-code` (`.mcp.json`), `claude-desktop` (мост `mcp-remote`), `all`; флаги `--dry-run`, `--remove`, `--server direct|wordstat|both`. Токен и логин подставляются из аргументов, env или `manage_credentials`.
+- **Ограничение хоста для картинок.** `adimages_add` принимает `file_path` на диске сервера — файлы маркетолога хосту недоступны. Шаг 10 и Use case 5: сначала проверка URL-параметра в `tools/list`, иначе заливка без картинок и пункт ручной работы в `10_launch_log.md`.
+- **Общий справочник подключения** — `docs/hosted-mcp-setup.md` в корне репозитория пакета (три сервера, таблица заголовков, конфиги трёх клиентов, проверка связи).
+- **Имя скилла в `SKILL.md` — `yandex-direct-manager`** (как папка репозитория и `.skill`-архив), вместо устаревшего `yandex-direct-create-pipeline`. Автоподхват по description сохранён (`disable-model-invocation` снят).
+
 ## 0.10.0 — 2026-08-10
 
 Слияние `aihub-139` и перенос рабочих кусков из форка генерации визуалов.

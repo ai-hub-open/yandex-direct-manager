@@ -6,6 +6,8 @@
 
 Перед тем как опираться на эти сценарии, **проверь, есть ли у тебя способность вызывать инструменты MCP-сервера `yandex-direct`** (в одной из сред они видны как `mcp__yandex-direct__*`, в другой имена могут выглядеть иначе — смотри по короткому имени инструмента: `campaigns_get`, `keywords_get` и т.д.).
 
+Сервер — **хостовый** `https://direct-mcp.aihub.click.ru/mcp`, подключение и заголовки — `yandex-direct-mcp.md` → «Подключение» и `docs/hosted-mcp-setup.md` репозитория пакета. Два следствия хоста, важные для сценариев ниже: `forecast_bids` недоступен (прокси Click.ru) и `adimages_add` не видит локальные файлы маркетолога (см. Use case 5).
+
 **Если таких инструментов нет** — скилл работает без live-данных: Шаг 2 уходит на справочник CPC из `references/frequency-calculator.md`, Шаг 5 берёт регионы по справочнику, Шаг 8 дедуплицирует ключи по выгрузке от маркетолога, Шаг 10 идёт в Директ Коммандер по `references/direct-commander-import.md`. Каждый такой шаг получает пометку о пропуске в свой артефакт, а сводный список — в `10_launch_log.md`, раздел «Пропущено из-за среды». Формат пометки — в разделе «Что нужно от среды» корневого `SKILL.md`.
 
 Безопасные читающие инструменты (ничего не меняют): `campaigns_get`, `keywords_get`, `keywordbids_get`, `forecast_bids`, `dictionaries_regions`, `adextensions_get`, `report_campaign`, `report_ad`, `report_search_queries`, `report_custom`, `bidmodifiers_get`.
@@ -201,6 +203,8 @@ python -m scripts.preflight --workspace <path>
 adimages_add({ file_path: "<абсолютный путь>", name: "<имя>", crop: "square" })
 → AdImageHash
 ```
+
+⚠️ **На хостовом MCP этот шаг особый:** `file_path` — диск сервера, не маркетолога. Проверь `tools/list` — если у `adimages_add` появился параметр URL, грузи по публичной ссылке; иначе пропусти шаг, заливай объявление без `image_hashes`, а добавление картинок запиши в `10_launch_log.md` как ручную работу (см. предупреждение в `yandex-direct-mcp.md` → `adimages_add`).
 
 **Шаг 2. Быстрые ссылки** (один набор на объявление, 1–8 ссылок):
 ```

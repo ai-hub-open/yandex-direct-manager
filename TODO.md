@@ -433,7 +433,7 @@
 
 Что именно проверить:
 
-1. `python -m scripts.setup_yandex_direct_mcp --mcp-path <путь> --mode sandbox --token <SANDBOX_TOKEN>`
+1. Подними локальный инстанс в sandbox-режиме (клон `ai-hub-open/yandex-direct-mcp`, `YANDEX_DIRECT_TOKEN=<SANDBOX_TOKEN>`, `YANDEX_DIRECT_SANDBOX=true`) и зарегистрируй его stdio-блоком в клиенте — см. `references/yandex-direct-mcp.md` → «Локальный stdio» (хостовый aihub.click.ru с песочницей не работает).
 2. Прогнать конвейер с `dry_run: true` и убедиться, что в `request.params` уходят
    `UnifiedCampaign`, `BiddingStrategy` с **обеими** сторонами, `ResponsiveAd` с
    `Titles` / `Texts` / `SitelinkSetId` / `AdExtensionIds`.
