@@ -19,7 +19,7 @@
 
 1. **`00_brief.md`** — поле 7 (УТП + сужающие слова) и поле 1 (продукт, для колонки Б).
 2. **Контекст продукта** — название, регион, тип спроса (определяется по полю 7 и полю 1).
-3. **Доступ к Yandex Cloud Search API (Wordstat)** — env `WORDSTAT_API_KEY` + `WORDSTAT_FOLDER_ID`, клиент `scripts/wordstat_api.py` (https://yandex.cloud/ru/docs/search-api/concepts/wordstat). Если ключа нет — частотности пробиваются через браузер пользователя (`references/wordstat-browser.md`).
+3. **Доступ к Wordstat** — основной путь: MCP `yandex-wordstat` (`references/wordstat-mcp.md`). Фолбек: Yandex Cloud Search API напрямую, env `WORDSTAT_API_KEY` + `WORDSTAT_FOLDER_ID`, клиент `scripts/wordstat_api.py` (https://yandex.cloud/ru/docs/search-api/concepts/wordstat). Если нет ни MCP, ни ключа — частотности пробиваются через браузер пользователя (`references/wordstat-browser.md`).
 
 ## Фаза 1. Распознавание типа спроса
 
@@ -80,9 +80,11 @@
 
 Это даёт семантику, которую легко пропустить: человек ищет «панно ручной работы», а мы льём только на «картины» — мимо.
 
-### 4.3 Итеративный заход в Wordstat через Yandex Cloud Search API
+### 4.3 Итеративный заход в Wordstat
 
-Wordstat теперь живёт внутри **Yandex Search API** (Yandex Cloud AI Studio). Метод `topRequests`:
+**Основной путь — MCP `yandex-wordstat`** (`references/wordstat-mcp.md`): для каждой из 7-10 перспективных комбинаций расширенной матрицы (не всё подряд — бережём квоту) вызови инструмент частотностей с регионами из брифа и запиши `frequency` (= `totalCount`, показов/мес), `exists`, `variants_found` в `01_masks.json`. Зафиксируй в `_state.json` → `wordstat_mcp_available: true|false`.
+
+Ниже — **фолбек без MCP**: прямой доступ к Yandex Cloud Search API. Wordstat теперь живёт внутри **Yandex Search API** (Yandex Cloud AI Studio). Метод `topRequests`:
 `POST https://searchapi.api.cloud.yandex.net/v2/wordstat/topRequests`, заголовок `Authorization: Api-Key <key>`.
 
 **Что нужно для доступа** (вписывается в файл `.env` в корне проекта, под `.gitignore`; шаблон — `.env.example`):
@@ -91,7 +93,7 @@ Wordstat теперь живёт внутри **Yandex Search API** (Yandex Clou
 - Проверка подключения: `python -m scripts.wordstat_api --check --regions 213`. Записывай результат в `_state.json` → `wordstat_api_available: true|false`.
 - Если ключа нет — задай маркетологу: «Подключён Yandex Cloud Search API (Wordstat)? Если нет — пришли API-ключ + folder_id или попроси администратора создать сервисный аккаунт (см. https://yandex.cloud/ru/docs/search-api/concepts/wordstat).»
 
-**Что делаем:**
+**Что делаем (фолбек):**
 
 Берём 7-10 перспективных комбинаций из расширенной матрицы (не всё подряд — бережём квоту), пишем в `_masks_seed.txt` (по фразе на строку) и прогоняем:
 ```
