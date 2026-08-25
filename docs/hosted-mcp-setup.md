@@ -8,7 +8,7 @@
 |---|---|---|
 | `yandex-direct` | `https://direct-mcp.aihub.click.ru/mcp` | 50 инструментов Direct API v501 (кампании, ЕПК, группы, объявления, ключи, ставки, отчёты, справочники) |
 | `yandex-wordstat` | `https://wordstat-mcp.aihub.click.ru/mcp` | Статистика поискового спроса (частотность, похожие запросы, регионы, динамика) |
-| `vk-ads` | `https://vkads-mcp.aihub.click.ru/mcp` | 48 инструментов VK Ads API (`vk_ads_*`: кампании, группы, объявления, аудитории, статистика) |
+| `vk-ads` | `https://vkads-mcp.aihub.click.ru/mcp` | 44 инструмента VK Ads API (`vk_ads_*`: кампании, группы, объявления, аудитории, статистика) |
 
 Корневой путь `/` отдаёт 404 — рабочий JSON-RPC endpoint именно `/mcp`. Health-check: `GET /healthz` → `OK`.
 
