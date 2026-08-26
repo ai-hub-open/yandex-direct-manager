@@ -82,9 +82,9 @@
 
 ### 4.3 Итеративный заход в Wordstat
 
-**Основной путь — MCP `yandex-wordstat`** (`references/wordstat-mcp.md`): для каждой из 7-10 перспективных комбинаций расширенной матрицы (не всё подряд — бережём квоту) вызови инструмент частотностей с регионами из брифа и запиши `frequency` (= `totalCount`, показов/мес), `exists`, `variants_found` в `01_masks.json`. Зафиксируй в `_state.json` → `wordstat_mcp_available: true|false`.
+**Основной путь — MCP `yandex-wordstat`** (`references/wordstat-mcp.md`): собери перспективные комбинации расширенной матрицы в один список и пробей одним вызовом `wordstat_shows_batch({ keywords: [...], region_id: <из брифа> })`, запиши `frequency` (= `stat`, показов/мес), `exists`, `variants_found` в `01_masks.json`. Зафиксируй в `_state.json` → `wordstat_mcp_available: true|false`. ⚠️ Ассоциации и похожие запросы MCP `yandex-wordstat` **не отдаёт** — они есть только на пути ниже (скрипт Cloud API).
 
-Ниже — **фолбек без MCP**: прямой доступ к Yandex Cloud Search API. Wordstat теперь живёт внутри **Yandex Search API** (Yandex Cloud AI Studio). Метод `topRequests`:
+Ниже — **путь расширения через Yandex Cloud Search API** (даёт ассоциации, в отличие от MCP): прямой доступ к API. Wordstat теперь живёт внутри **Yandex Search API** (Yandex Cloud AI Studio). Метод `topRequests`:
 `POST https://searchapi.api.cloud.yandex.net/v2/wordstat/topRequests`, заголовок `Authorization: Api-Key <key>`.
 
 **Что нужно для доступа** (вписывается в файл `.env` в корне проекта, под `.gitignore`; шаблон — `.env.example`):
