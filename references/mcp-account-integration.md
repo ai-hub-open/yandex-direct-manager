@@ -14,12 +14,58 @@
 
 ---
 
+## Use case 0: Выбор кабинета (Шаг 0.5) — до любого другого вызова
+
+**Зачем:** на одном подключении может быть несколько рекламных кабинетов, а каждый
+инструмент принимает `client_login`. Не выбрали явно — Шаг 10 создаст кампанию в кабинете
+по умолчанию, и узнаешь ты об этом после заливки.
+
+```
+accounts_get({})
+```
+
+Ответ: `{ source: "yandex-direct" | "yandex-direct-agency" | "click.ru", accounts: [{ client_login, name, ... }] }`.
+
+- `source: "click.ru"` — подключение работает через прокси. Следствия: `forecast_bids`
+  недоступен, отчёты требуют `campaign_ids`.
+- `source: "yandex-direct"` / `"yandex-direct-agency"` — прямой OAuth. `forecast_bids` доступен.
+
+**Один кабинет** — берём его молча, пишем в `_state.json`.
+**Несколько** — гейт: «Вижу N кабинетов: <перечисли name + client_login>. В какой заливаем?»
+
+Записать в `_state.json`:
+
+```json
+{
+  "direct_client_login": "porg-xxxxxxx",
+  "direct_account_name": "Planfix",
+  "direct_mode": "click.ru",
+  "direct_forecast_available": false
+}
+```
+
+**Дальше `client_login` из `_state.json` передаётся в КАЖДЫЙ вызов инструментов Директа,
+относящихся к кабинету** — и читающих, и пишущих. Не полагайся на «кабинет подключения».
+Исключение — три инструмента, которые к кабинету не привязаны и параметр `client_login`
+не принимают: сам `accounts_get`, `forecast_bids` (чистый расчёт по фразам) и справочники
+`dictionaries_*`. Им `client_login` не передавай.
+
+**Несколько серверов Директа в сессии.** Бывает, что подключено 2–3 сервера в разных
+режимах. Тогда: позови `accounts_get` на каждом, покажи маркетологу сводку «сервер → режим
+→ кабинеты» и спроси, в какой кабинет какого сервера заливаем. Запиши выбранный сервер в
+`_state.json` → `direct_server`. Исключение — `forecast_bids`, см. Use case 3.
+
+**Стоимость:** ~10 баллов. Этот вызов заодно проверяет связность MCP — отдельного
+пинга не нужно.
+
+---
+
 ## Use case 1: Аудит аккаунта (Шаг 2)
 
 **Зачем:** понять, есть ли в аккаунте кампании, семантически пересекающиеся с новой. Нужно, чтобы на Шагах 3–4 не дублировать ключи (каннибализация — конкуренция с самим собой за показ), а на Шаге 2 взять реальные ставки и CPC как ground truth.
 
 ```
-campaigns_get({ limit: 100, include_strategy: true })
+campaigns_get({ client_login: <из _state.json>, limit: 100, include_strategy: true })
 ```
 
 `include_strategy: true` заодно вернёт стратегии, счётчики Метрики и приоритетные цели существующих кампаний — полезно, чтобы не спорить с уже настроенной логикой аккаунта.
@@ -51,7 +97,7 @@ campaigns_get({ limit: 100, include_strategy: true })
 ## Use case 2: Дедупликация ключей (Шаги 3 и 8)
 
 ```
-keywords_get({ campaign_ids: [709899154, 709899157], limit: 500 })
+keywords_get({ client_login: <из _state.json>, campaign_ids: [709899154, 709899157], limit: 500 })
 ```
 
 ⚠️ **Не больше 10 кампаний за вызов** — длиннее список, и API отвечает кодом 4001. На кабинете из полутора-двух десятков кампаний читай порциями по 10 и склеивай результат сам. То же для `adgroups_get`, `ads_get`, `keywordbids_get`. И хотя бы один фильтр обязателен всегда: без него уходит пустой `SelectionCriteria` и API отвечает кодом 8000. Подробности и что меняется в MCP 0.5.1 — `yandex-direct-mcp.md` → «Чтение: всегда передавай фильтр».
@@ -74,17 +120,20 @@ keywords_get({ campaign_ids: [709899154, 709899157], limit: 500 })
 ### 1. Историческая AvgCpc — если есть похожие кампании с трафиком
 
 ```
-report_campaign({ campaign_ids: [...], date_range: "LAST_30_DAYS" })
+report_campaign({ client_login: <из _state.json>, campaign_ids: [...], date_range: "LAST_30_DAYS" })
 ```
 
-Реально списанные деньги — золотой стандарт. Помечай `from: history`.
+Реально списанные деньги — золотой стандарт. Помечай `from: history`. `campaign_ids`
+обязателен, см. правило фильтра в `yandex-direct-mcp.md`.
 
 Нужен CPC по конкретным фразам, а не по кампании целиком — `report_custom`:
 
 ```
 report_custom({
+  client_login: <из _state.json>,
   report_type: "CRITERIA_PERFORMANCE_REPORT",
   fields: ["CampaignName", "Criteria", "Impressions", "Clicks", "Cost", "AvgCpc"],
+  campaign_ids: [...],
   date_range: "LAST_30_DAYS"
 })
 ```
@@ -92,7 +141,7 @@ report_custom({
 ### 2. Живой аукцион по существующим ключам
 
 ```
-keywordbids_get({ keyword_ids: [<из keywords_get>], include_auction: true })
+keywordbids_get({ client_login: <из _state.json>, keyword_ids: [<из keywords_get>], include_auction: true })
 ```
 
 Реальная списываемая цена (`Price`) по ключам, которые уже заведены в аккаунт. Ответ объёмный (~44 позиции аукциона на ключ) — **не парси вручную**:
@@ -109,9 +158,20 @@ python -m scripts.forecast_cpc --input _keywordbids_raw.json --region-factor <м
 forecast_bids({ phrases: [<до 100 масок из 01_masks.json>], region_ids: [213, 2] })
 ```
 
-Даёт по каждой фразе `cpc_guarantee_min/max`, `cpc_premium_min/max`, `shows_per_month`, `clicks_per_month`, `ctr` — **без создания кампании и без расхода бюджета**. Для базового сценария бери медиану `cpc_guarantee_max` по фразам, для оптимистичного — `cpc_guarantee_min`, для пессимистичного — `cpc_premium_min`. Помечай `from: forecast`.
+`forecast_bids` к кабинету не привязан (`client_login` не принимает) — это чистый расчёт
+по фразам и регионам. Даёт по каждой фразе `cpc_guarantee_min/max`, `cpc_premium_min/max`, `shows_per_month`, `clicks_per_month`, `ctr` — **без создания кампании и без расхода бюджета**. Для базового сценария бери медиану `cpc_guarantee_max` по фразам, для оптимистичного — `cpc_guarantee_min`, для пессимистичного — `cpc_premium_min`. Помечай `from: forecast`.
 
-🚫 В режиме прокси Click.ru недоступен — вернётся понятная ошибка, тогда переходи к источнику 4.
+🚫 На подключении в режиме прокси click.ru недоступен: сервер отвечает «Прогноз бюджета
+недоступен в режиме прокси Click.ru: он живёт в Live API v4». Это не ошибка конфигурации.
+
+✅ **Но если в сессии есть второе подключение Директа в прямом OAuth-режиме**
+(`accounts_get.source == "yandex-direct"`, см. Use case 0) — считай прогноз на нём.
+`forecast_bids` ничего не создаёт, бюджет не тратит и к кабинету заливки не привязан:
+это чистый расчёт по фразам и регионам. Заливка при этом остаётся в выбранном кабинете
+прокси-подключения. Зафиксируй в `02_frequency.md`: `from: forecast (сервер <имя>, прямой
+режим)`.
+
+Нет ни того, ни другого — источник 4.
 
 ### 4. Справочник CPC по нишам
 
@@ -145,7 +205,15 @@ forecast_bids({ phrases: [<до 100 масок из 01_masks.json>], region_ids:
 | Ростов-на-Дону | 39 |
 | Сочи | 239 |
 
-Нужного города нет или есть сомнения — `dictionaries_regions({})`. Ответ ~3 МБ: сохрани в `<workspace>/_regions_cache.json` и грепай по имени, целиком не читай. Справочник не меняется — кэшируй на сессию.
+Нужного города нет в шорт-листе — **сначала спроси маркетолога**: «Регион <X> — это город
+или область с пригородами?» и найди ID по шорт-листу/справке Яндекса.
+
+`dictionaries_regions({})` — крайняя мера (к кабинету не привязан, `client_login` не принимает).
+Ответ **2,87 МБ / 104 тыс. строк**: в большинстве
+сред он не помещается в контекст и обрезается клиентом, а записать его в рабочую папку без
+протаскивания через контекст нечем. Зови его только если среда умеет перенаправить вывод
+инструмента в файл на диске; иначе — шорт-лист плюс вопрос маркетологу. Позвал один раз —
+кэшируй на сессию, справочник не меняется.
 
 Фиксируй в `05_campaign_structure.json` (`region_ids`) и в `10_launch_log.md`.
 
@@ -200,15 +268,19 @@ python -m scripts.preflight --workspace <path>
 
 **Шаг 1. Изображения** (по одному вызову на файл, до 5):
 ```
-adimages_add({ file_path: "<абсолютный путь>", name: "<имя>", crop: "square" })
+adimages_add({ client_login: <из _state.json>, file_path: "<абсолютный путь>", name: "<имя>", crop: "square" })
 → AdImageHash
 ```
 
-⚠️ **На хостовом MCP этот шаг особый:** `file_path` — диск сервера, не маркетолога. Проверь `tools/list` — если у `adimages_add` появился параметр URL, грузи по публичной ссылке; иначе пропусти шаг, заливай объявление без `image_hashes`, а добавление картинок запиши в `10_launch_log.md` как ручную работу (см. предупреждение в `yandex-direct-mcp.md` → `adimages_add`).
+⚠️ **На хостовом MCP картинки не заливаются.** `adimages_add` принимает только `file_path`
+на диске сервера, а файлы маркетолога хосту недоступны; URL-параметра в схеме нет
+(сверено 26.08.2026, MCP 0.5.0). Поэтому: объявление заливается **без** `image_hashes`,
+а добавление картинок уходит в `10_launch_log.md` списком ручной работы (интерфейс Директа
+или Коммандер). Появится URL-параметр — вернуть сюда ветку загрузки по ссылке.
 
 **Шаг 2. Быстрые ссылки** (один набор на объявление, 1–8 ссылок):
 ```
-sitelinks_add({ sitelinks: [
+sitelinks_add({ client_login: <из _state.json>, sitelinks: [
   { title: "Тарифы", href: "https://...", description: "От 990 ₽/мес" },
   ...
 ]})
@@ -217,14 +289,15 @@ sitelinks_add({ sitelinks: [
 
 **Шаг 3. Уточнения.** Сначала посмотри, что уже принято модерацией — переиспользование экономит время:
 ```
-adextensions_get({ statuses: ["ACCEPTED"] })
-adextensions_add({ callouts: ["Без карты", "Триал 7 дней"] })   // только недостающие
+adextensions_get({ client_login: <из _state.json>, statuses: ["ACCEPTED"] })
+adextensions_add({ client_login: <из _state.json>, callouts: ["Без карты", "Триал 7 дней"] })   // только недостающие
 → ad_extension_ids
 ```
 
 **Шаг 4. Кампания:**
 ```
 campaigns_add({
+  client_login: <из _state.json>,
   name: "<из 05_campaign_structure.json>",
   start_date: "<YYYY-MM-DD>",
   campaign_type: "UNIFIED",
@@ -243,6 +316,7 @@ campaigns_add({
 **Шаг 5. Группа:**
 ```
 adgroups_add({
+  client_login: <из _state.json>,
   campaign_id: <из шага 4>,
   name: "<имя группы>",
   region_ids: [<Use case 4>],
@@ -255,6 +329,7 @@ adgroups_add({
 **Шаг 6. Комбинаторное объявление:**
 ```
 ads_add_responsive({
+  client_login: <из _state.json>,
   ad_group_id: <из шага 5>,
   titles: [<3–7 заголовков>],
   texts: [<2–3 текста>],
@@ -269,7 +344,7 @@ ads_add_responsive({
 
 **Шаг 7. Ключевые фразы** (пачкой):
 ```
-keywords_add({ keywords: [
+keywords_add({ client_login: <из _state.json>, keywords: [
   { keyword: "\"автоматизация смм\"", ad_group_id: <ID> },
   ...
 ]})
@@ -279,19 +354,19 @@ keywords_add({ keywords: [
 
 - **Автостратегия** (`WB_MAXIMUM_CLICKS`, `PAY_FOR_CONVERSION` и прочие) — ставки не задаются, задаётся приоритет:
   ```
-  keywordbids_set({ bids: [{ ad_group_id: <ID>, strategy_priority: "NORMAL" }] })
+  keywordbids_set({ client_login: <из _state.json>, bids: [{ ad_group_id: <ID>, strategy_priority: "NORMAL" }] })
   ```
 - **Ручная** (`HIGHEST_POSITION`) — целевая ставка из `02_frequency.json`, уровень группы закрывает все её фразы:
   ```
-  keywordbids_set({ bids: [{ ad_group_id: <ID>, search_bid: 25 }] })
+  keywordbids_set({ client_login: <из _state.json>, bids: [{ ad_group_id: <ID>, search_bid: 25 }] })
   ```
 
 Это закрывает старую проблему «ключи висят на дефолтных 0.30 ₽».
 
 **Шаг 9. Корректировки ставок** — по одному вызову на тип. Коэффициент **множитель, а не дельта**: `90` = минус 10%, `0` = отключить.
 ```
-bidmodifiers_devices({ campaign_id: <ID>, mobile: { bid_modifier: 90 } })
-bidmodifiers_demographics({ campaign_id: <ID>, adjustments: [
+bidmodifiers_devices({ client_login: <из _state.json>, campaign_id: <ID>, mobile: { bid_modifier: 90 } })
+bidmodifiers_demographics({ client_login: <из _state.json>, campaign_id: <ID>, adjustments: [
   { age: "AGE_0_17", bid_modifier: 0 },
   { age: "AGE_18_24", bid_modifier: 80 }
 ]})
@@ -350,11 +425,11 @@ bidmodifiers_demographics({ campaign_id: <ID>, adjustments: [
 | Шаг | Вызов | Цель | Записать в |
 |---|---|---|---|
 | 2 | `campaigns_get(include_strategy)` | Аудит аккаунта | `_account_audit.md` |
-| 2 | `report_campaign` / `report_custom` | Историческая AvgCpc | `02_frequency.md` |
+| 2 | `report_campaign` / `report_custom` (+ campaign_ids) | Историческая AvgCpc | `02_frequency.md` |
 | 2 | `keywordbids_get` + `scripts/forecast_cpc.py` | CPC по живому аукциону | `02_frequency.json` |
 | 2 | `forecast_bids` | Прогноз CPC по маскам без кампании | `02_frequency.json` |
 | 5 | `dictionaries_regions` (один раз) | Точные region_ids | `05_campaign_structure.json` |
-| 8 | `keywords_get` | Дедупликация ключей | `08_creatives.json` |
+| 8 | `keywords_get` (+ campaign_ids) | Дедупликация ключей | `08_creatives.json` |
 | 10 | `adimages_add` → `sitelinks_add` → `adextensions_add` | Ассеты объявления | `10_launch_log.md` |
 | 10 | `campaigns_add` → `adgroups_add` → `ads_add_responsive` → `keywords_add` | Заливка в DRAFT | `10_launch_log.md` |
 | 10 | `keywordbids_set`, `bidmodifiers_*` | Ставки и корректировки | `10_launch_log.md` |
