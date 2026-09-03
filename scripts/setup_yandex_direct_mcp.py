@@ -5,12 +5,17 @@ setup_yandex_direct_mcp.py — подключает хостовые MCP aihub.c
 НЕ нужно. Скрипт только дописывает блоки `mcpServers` в конфиги клиентов
 (с бэкапом; существующие серверы сохраняются).
 
-Подключаемые серверы (--server, по умолчанию both):
+Подключаемые серверы (--server, по умолчанию all):
 - yandex-direct    → https://direct-mcp.aihub.click.ru/mcp    (50 инструментов Direct API)
 - yandex-wordstat  → https://wordstat-mcp.aihub.click.ru/mcp  (частотность и семантика Wordstat)
+- KeepImage        → https://storage.aihub.click.ru/mcp       (хранилище картинок для заливки
+                     локальных креативов в Директ через adimages_add(image_url))
 
-Авторизация у обоих — API-токен click.ru
-(https://click.ru/userinfo.html → «API Token» → «Создать»).
+Авторизация у всех трёх — один API-токен click.ru
+(https://click.ru/userinfo.html → «API Token» → «Создать»). Токен передаётся
+заголовком (Authorization / X-Auth-Token), а НЕ в URL — путь /c/<token>/mcp
+логируется прокси и историей, поэтому установщик его не использует. Для мастер-
+аккаунта click.ru тот же --click-ru-user-id уходит и в Direct, и в KeepImage.
 
 Цели (--target, можно несколько):
 - cursor          ~/.cursor/mcp.json (глобально для Cursor)
@@ -23,7 +28,7 @@ setup_yandex_direct_mcp.py — подключает хостовые MCP aihub.c
     python -m scripts.setup_yandex_direct_mcp \
         --token <CLICK_RU_TOKEN> --client-login <ЛОГИН_ДИРЕКТА> \
         [--click-ru-user-id <ID>] \
-        [--target all] [--server both] [--dry-run] [--remove]
+        [--target all] [--server all] [--dry-run] [--remove]
 
 Токен/логин можно не передавать, если они сохранены:
     python -m scripts.manage_credentials set clickru
@@ -58,9 +63,11 @@ except ImportError:
 
 DIRECT_URL = "https://direct-mcp.aihub.click.ru/mcp"
 WORDSTAT_URL = "https://wordstat-mcp.aihub.click.ru/mcp"
+KEEPIMAGE_URL = "https://storage.aihub.click.ru/mcp"
 
 DIRECT_SERVER = "yandex-direct"
 WORDSTAT_SERVER = "yandex-wordstat"
+KEEPIMAGE_SERVER = "KeepImage"
 
 
 # ---------- пути конфигов ----------
@@ -109,6 +116,16 @@ def direct_headers(token: str, client_login: str | None, user_id: str | None) ->
 
 def wordstat_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
+
+
+def keepimage_headers(token: str, user_id: str | None) -> dict:
+    # Тот же токен click.ru, что у Директа, но своим заголовком (X-Auth-Token).
+    # Токен НЕ зашиваем в URL (/c/<token>/mcp) — путь логируется прокси и историей;
+    # заголовок задаём прямо в конфиге клиента, коннектор его подхватывает.
+    headers = {"X-Auth-Token": token}
+    if user_id:
+        headers["X-Auth-UserId"] = user_id
+    return headers
 
 
 def http_entry(url: str, headers: dict, *, with_type: bool) -> dict:
@@ -165,7 +182,7 @@ def mask_entry(entry: dict) -> dict:
     if entry.get("args"):
         entry["args"] = [
             arg.split(": ", 1)[0] + ": " + mask(arg.split(": ", 1)[1])
-            if ": " in arg and arg.split(": ", 1)[0].lower() in {"authorization", "x-click-ru-token"}
+            if ": " in arg and arg.split(": ", 1)[0].lower() in {"authorization", "x-click-ru-token", "x-auth-token"}
             else arg
             for arg in entry["args"]
         ]
@@ -263,8 +280,9 @@ def main() -> None:
     parser.add_argument("--client-login", help="Логин аккаунта Яндекс.Директа (env CLICK_RU_CLIENT_LOGIN, manage_credentials clickru_login)")
     parser.add_argument("--click-ru-user-id", help="ID пользователя click.ru — только для мастер-аккаунта")
     parser.add_argument(
-        "--server", choices=["direct", "wordstat", "both"], default="both",
-        help="Какой сервер подключать (по умолчанию both — скиллу нужны оба)",
+        "--server", choices=["direct", "wordstat", "keepimage", "both", "all"], default="all",
+        help="Какой сервер подключать. По умолчанию all — direct + wordstat + KeepImage "
+             "(хранилище картинок для заливки в Директ). both = только direct + wordstat (легаси)",
     )
     parser.add_argument(
         "--target", action="append",
@@ -282,7 +300,9 @@ def main() -> None:
     server_names = {
         "direct": [DIRECT_SERVER],
         "wordstat": [WORDSTAT_SERVER],
+        "keepimage": [KEEPIMAGE_SERVER],
         "both": [DIRECT_SERVER, WORDSTAT_SERVER],
+        "all": [DIRECT_SERVER, WORDSTAT_SERVER, KEEPIMAGE_SERVER],
     }[args.server]
 
     token = None
@@ -303,8 +323,10 @@ def main() -> None:
             all_headers[DIRECT_SERVER] = direct_headers(token, client_login, args.click_ru_user_id)
         if WORDSTAT_SERVER in server_names:
             all_headers[WORDSTAT_SERVER] = wordstat_headers(token)
+        if KEEPIMAGE_SERVER in server_names:
+            all_headers[KEEPIMAGE_SERVER] = keepimage_headers(token, args.click_ru_user_id)
 
-    urls = {DIRECT_SERVER: DIRECT_URL, WORDSTAT_SERVER: WORDSTAT_URL}
+    urls = {DIRECT_SERVER: DIRECT_URL, WORDSTAT_SERVER: WORDSTAT_URL, KEEPIMAGE_SERVER: KEEPIMAGE_URL}
 
     print("=== Хостовые MCP aihub.click.ru ===")
     print(f"Серверы: {', '.join(server_names)}")
@@ -346,10 +368,13 @@ def main() -> None:
         print("1. Claude Code: новая сессия подхватит .mcp.json автоматически.")
     print("2. Проверь связь читающими вызовами:")
     if DIRECT_SERVER in server_names:
-        print("   - Direct:   campaigns_get с limit=1")
+        print("   - Direct:    campaigns_get с limit=1")
     if WORDSTAT_SERVER in server_names:
-        print("   - Wordstat: «пробей частотность фразы „кофеварка“»")
-    print("3. Ошибка 401 = токен click.ru недействителен или не хватает --client-login.")
+        print("   - Wordstat:  «пробей частотность фразы „кофеварка“»")
+    if KEEPIMAGE_SERVER in server_names:
+        print("   - KeepImage: storage_list (список объектов хранилища)")
+    print("3. Ошибка 401 = токен click.ru недействителен или не хватает --client-login "
+          "(Direct) / --click-ru-user-id (мастер-аккаунт, KeepImage).")
     print()
     print("Справочник подключения: docs/hosted-mcp-setup.md")
 

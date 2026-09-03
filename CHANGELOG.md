@@ -2,6 +2,17 @@
 
 Версии — [semver](https://semver.org/lang/ru/): до 1.0 состав шагов и материалов может меняться.
 
+## 0.13.2 — 2026-09-03
+
+- **Установщик MCP подключает и KeepImage — без ручной вставки токена.** `setup_yandex_direct_mcp.py`
+  по умолчанию (`--server all`) прописывает три сервера: `yandex-direct`, `yandex-wordstat` и
+  `KeepImage` (хранилище картинок). Раньше KeepImage приходилось подключать вручную коннектором с
+  токеном в URL (`/c/<токен>/mcp`) — теперь установщик прописывает его тем же токеном click.ru
+  заголовком `X-Auth-Token` (а для мастер-аккаунта тот же `--click-ru-user-id` уходит и в Direct как
+  `X-Click-Ru-User-Id`, и в KeepImage как `X-Auth-UserId`). Токен идёт заголовком, а не в пути URL
+  (путь логируется прокси/историей). `--server both` оставлен как легаси (только direct + wordstat).
+  Обновлены `docs/hosted-mcp-setup.md` и `SKILL.md`; добавлены тесты для KeepImage-записи.
+
 ## 0.13.1 — 2026-09-03
 
 - **Установщик MCP сохраняет токен click.ru в реестр ключей.** `setup_yandex_direct_mcp.py`
