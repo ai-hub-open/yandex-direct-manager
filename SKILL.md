@@ -95,10 +95,10 @@ description: Тактический пайплайн создания рекла
 - `scripts/generate_creative_images.py` — генерация картинок Шага 8.5 (OpenAI gpt-image-1)
 - `scripts/generate_creative_videos.py` — генерация видео Шага 8.5 (Replicate)
 - `scripts/validate_assets.py` — проверка картинок/видео под техтребования Директа
-- `scripts/upload_creatives_to_storage.py` — заливка локальных картинок в KeepImage по HTTP и получение публичных ссылок для `adimages_add(image_url=...)` (Шаг 10Б); пишет `assets/storage_manifest.json`. Токен — `clickru` из реестра ключей. `--check` / `--dry-run` / `--all-assets` / `--files`
+- `scripts/upload_creatives_to_storage.py` — заливка локальных картинок в KeepImage по HTTP и получение публичных ссылок для `adimages_add(image_url=...)` (Шаг 10Б); пишет `assets/storage_manifest.json`. Токен — `clickru` из реестра ключей (его туда кладёт установщик `setup_yandex_direct_mcp.py` при подключении MCP; иначе — `manage_credentials set clickru`). `--check` / `--dry-run` / `--all-assets` / `--files`
 - `scripts/manage_credentials.py` / `scripts/credentials.py` — реестр ключей (openai, replicate, yandex_direct, clickru) вне рабочей папки
 - `scripts/wordstat_api.py` — **основной путь расширения семантики** (Шаг 3, путь 1): клиент Yandex Cloud Search API (Wordstat `topRequests`), `--mode masks` / `--mode semantics` (рекурсивный сбор волнами с ассоциациями); env `WORDSTAT_API_KEY` + `WORDSTAT_FOLDER_ID`; `--check` для проверки. MCP `yandex-wordstat` покрывает только частотности (`wordstat_shows_batch`), семантику не расширяет — см. `references/wordstat-mcp.md`
-- `scripts/setup_yandex_direct_mcp.py` — подключение **хостовых** MCP `yandex-direct` и `yandex-wordstat` (aihub.click.ru) к Cursor / Claude Code / Claude Desktop: токен click.ru, `--target`, `--dry-run`, `--remove`. Запускается, когда MCP в среде не видны. Локальный stdio-вариант (клон репозитория + Bun) остаётся для разработки самих серверов — см. `references/yandex-direct-mcp.md`
+- `scripts/setup_yandex_direct_mcp.py` — подключение **хостовых** MCP `yandex-direct` и `yandex-wordstat` (aihub.click.ru) к Cursor / Claude Code / Claude Desktop: токен click.ru, `--target`, `--dry-run`, `--remove`. Запускается, когда MCP в среде не видны. Заодно сохраняет токен click.ru в реестр ключей (`clickru`), поэтому `upload_creatives_to_storage.py` работает сразу после подключения — отдельный `manage_credentials set clickru` не нужен. Локальный stdio-вариант (клон репозитория + Bun) остаётся для разработки самих серверов — см. `references/yandex-direct-mcp.md`
 
 ---
 

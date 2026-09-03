@@ -43,13 +43,14 @@ import sys
 from pathlib import Path
 
 try:
-    from scripts.credentials import load_api_key, CredentialNotFound
+    from scripts.credentials import load_api_key, set_api_key, CredentialNotFound
 except ImportError:
     sys.path.insert(0, str(Path(__file__).parent.parent))
     try:
-        from scripts.credentials import load_api_key, CredentialNotFound
+        from scripts.credentials import load_api_key, set_api_key, CredentialNotFound
     except ImportError:
         load_api_key = None
+        set_api_key = None
 
         class CredentialNotFound(Exception):
             pass
@@ -223,6 +224,35 @@ def resolve_credential(arg_value: str | None, env_name: str, service: str, *, re
     return None
 
 
+def save_token_to_registry(token: str, user_id: str | None, *, dry_run: bool) -> None:
+    """Сохраняет токен click.ru (и опц. user-id) в реестр ключей скилла.
+
+    Не валит установку MCP при ошибке записи — конфиг коннектора важнее.
+    Токен целиком не печатает, только маску.
+    """
+    user_id = user_id or os.environ.get("CLICK_RU_USER_ID")
+    if dry_run:
+        extra = " и 'clickru_user_id'" if user_id else ""
+        print(f"[dry-run] В реальном прогоне токен click.ru был бы сохранён в реестр "
+              f"ключей как 'clickru'{extra} — для upload_creatives_to_storage.py.")
+        return
+    if set_api_key is None:
+        print("[!] модуль scripts.credentials недоступен — токен не сохранён в реестр;\n"
+              "  выполни вручную: python -m scripts.manage_credentials set clickru")
+        return
+    try:
+        set_api_key("clickru", token)
+        saved = ["clickru"]
+        if user_id:
+            set_api_key("clickru_user_id", user_id)
+            saved.append("clickru_user_id")
+        print(f"[ok] токен click.ru сохранён в реестр ключей ({', '.join(saved)}, "
+              f"{mask(token)}) — upload_creatives_to_storage.py готов к работе")
+    except Exception as e:
+        print(f"[!] конфиг MCP записан, но токен не сохранён в реестр: {e}\n"
+              f"  выполни вручную: python -m scripts.manage_credentials set clickru")
+
+
 # ---------- main ----------
 
 def main() -> None:
@@ -295,6 +325,14 @@ def main() -> None:
         }
         apply_entries(path, entries, remove=args.remove, dry_run=args.dry_run)
         print()
+
+    # Токен click.ru нужен и штатному скрипту заливки картинок
+    # (scripts/upload_creatives_to_storage.py, ходит в KeepImage напрямую по HTTP).
+    # Кладём его в реестр ключей, чтобы скрипт работал сразу после подключения MCP —
+    # без отдельного `manage_credentials set clickru`. При --remove реестр не трогаем
+    # (ключ мог быть заведён вручную и нужен другим скриптам).
+    if token and not args.remove:
+        save_token_to_registry(token, args.click_ru_user_id, dry_run=args.dry_run)
 
     if args.remove or args.dry_run:
         return
