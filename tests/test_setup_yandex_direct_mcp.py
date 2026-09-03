@@ -11,6 +11,7 @@ HOME/USERPROFILE в tmp_path и запрещает connect. Пишем в цел
 """
 from __future__ import annotations
 
+import json
 import sys
 
 import pytest
@@ -22,6 +23,10 @@ from scripts.credentials import CredentialNotFound, load_api_key, set_api_key
 def _run(monkeypatch, *args: str) -> None:
     monkeypatch.setattr(sys, "argv", ["setup_yandex_direct_mcp", *args])
     setup.main()
+
+
+def _cursor_servers() -> dict:
+    return json.loads(setup.cursor_user_config().read_text(encoding="utf-8"))["mcpServers"]
 
 
 def test_installer_saves_clickru_token(monkeypatch):
@@ -68,6 +73,42 @@ def test_token_never_printed_in_full(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert token not in out
     assert "сохранён в реестр" in out
+
+
+def test_keepimage_connected_by_default(monkeypatch):
+    # без --server → default all → KeepImage прописывается автоматически
+    _run(monkeypatch, "--token", "JWT-TEST-TOKEN", "--client-login", "acme", "--target", "cursor")
+    servers = _cursor_servers()
+    assert "KeepImage" in servers
+    assert servers["KeepImage"]["url"] == "https://storage.aihub.click.ru/mcp"
+    assert servers["KeepImage"]["headers"]["X-Auth-Token"] == "JWT-TEST-TOKEN"
+    # user-id не задан → заголовка нет
+    assert "X-Auth-UserId" not in servers["KeepImage"]["headers"]
+
+
+def test_keepimage_user_id_header(monkeypatch):
+    _run(monkeypatch, "--token", "JWT-TEST-TOKEN", "--client-login", "acme",
+         "--click-ru-user-id", "42", "--target", "cursor")
+    headers = _cursor_servers()["KeepImage"]["headers"]
+    assert headers["X-Auth-Token"] == "JWT-TEST-TOKEN"
+    assert headers["X-Auth-UserId"] == "42"
+
+
+def test_keepimage_token_not_in_url(monkeypatch):
+    # токен идёт заголовком, а не в путь /c/<token>/mcp
+    _run(monkeypatch, "--token", "SECRET-TOKEN-123", "--client-login", "acme", "--target", "cursor")
+    ki = _cursor_servers()["KeepImage"]
+    assert ki["url"] == "https://storage.aihub.click.ru/mcp"
+    assert "SECRET-TOKEN-123" not in ki["url"]
+
+
+def test_server_direct_excludes_keepimage(monkeypatch):
+    _run(monkeypatch, "--token", "JWT-TEST-TOKEN", "--client-login", "acme",
+         "--server", "direct", "--target", "cursor")
+    servers = _cursor_servers()
+    assert "yandex-direct" in servers
+    assert "KeepImage" not in servers
+    assert "yandex-wordstat" not in servers
 
 
 def test_registry_error_does_not_break_install(monkeypatch, capsys):

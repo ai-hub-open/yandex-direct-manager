@@ -31,14 +31,14 @@
 - ID аккаунта VK Рекламы в click.ru: `GET /accounts` в https://api.click.ru/V0/docs/.
 - Альтернативы click.ru для VK (готовый `X-VK-Ads-Token`, OAuth `X-VK-Ads-Client-Id` + `X-VK-Ads-Client-Secret`) сервер тоже принимает — см. его сообщение об ошибке.
 - Токен click.ru — секрет. В git не коммитим: в репозитории только плейсхолдеры, реальные значения пишутся в конфиги клиентов установщиком.
-- **KeepImage** проще всего подключить коннектором по адресу с токеном в пути: `https://storage.aihub.click.ru/c/<CLICK_RU_TOKEN>/mcp` (заголовки в окне коннектора не задаются). Через `mcp-remote` для Claude Desktop — блок `mcpServers.KeepImage` с `command: npx`, `args: ["-y","mcp-remote","https://storage.aihub.click.ru/mcp","--header","X-Auth-Token:${CLICK_TOKEN}"]`, `env: {"CLICK_TOKEN":"<токен>"}` (без пробела после двоеточия в `--header`; после правки — полный перезапуск Desktop). Скрипт `scripts/upload_creatives_to_storage.py` ходит в KeepImage по HTTP напрямую и коннектора не требует — ему нужен только токен `clickru` в реестре ключей.
+- **KeepImage** обычно прописывается установщиком `setup_yandex_direct_mcp.py` (заголовком `X-Auth-Token`, см. «Автоматическая запись конфигов»). Если подключаешь **вручную через окно коннектора** (где заголовки не задать) — используй адрес с токеном в пути: `https://storage.aihub.click.ru/c/<CLICK_RU_TOKEN>/mcp` (для мастер-аккаунта — `/c/<CLICK_RU_TOKEN>/<user-id>/mcp`). Такой URL с токеном — секрет (он логируется прокси и историей), береги его как пароль. Через `mcp-remote` для Claude Desktop — блок `mcpServers.KeepImage` с `command: npx`, `args: ["-y","mcp-remote","https://storage.aihub.click.ru/mcp","--header","X-Auth-Token:${CLICK_TOKEN}"]`, `env: {"CLICK_TOKEN":"<токен>"}` (без пробела после двоеточия в `--header`; после правки — полный перезапуск Desktop). Скрипт `scripts/upload_creatives_to_storage.py` ходит в KeepImage по HTTP напрямую и коннектора не требует — ему нужен только токен `clickru` в реестре ключей.
 
 ## Автоматическая запись конфигов (рекомендуется)
 
 Установщики лежат в скиллах и умеют цели `cursor` (глобально, `~/.cursor/mcp.json`), `cursor-project` (`.cursor/mcp.json` в текущей папке), `claude-code` (`.mcp.json` в текущей папке), `claude-desktop`, `all`:
 
 ```bash
-# Директ + Wordstat (одна команда, оба сервера)
+# Директ + Wordstat + KeepImage (одна команда, все три сервера — по умолчанию --server all)
 python -m scripts.setup_yandex_direct_mcp \
   --token <CLICK_RU_TOKEN> --client-login <ЛОГИН_ДИРЕКТА> \
   --target all
@@ -49,7 +49,9 @@ python -m scripts.setup_vk_ads_mcp \
   --target all
 ```
 
-Полезные флаги: `--dry-run` (показать, что будет записано), `--remove` (удалить записи), `--click-ru-user-id` (мастер-аккаунт click.ru). Токен можно не передавать аргументом, если он уже сохранён через `manage_credentials set clickru`.
+Полезные флаги: `--dry-run` (показать, что будет записано), `--remove` (удалить записи), `--click-ru-user-id` (мастер-аккаунт click.ru), `--server` (`all` по умолчанию — direct + wordstat + KeepImage; `both` — только direct + wordstat). Токен можно не передавать аргументом, если он уже сохранён через `manage_credentials set clickru`.
+
+`setup_yandex_direct_mcp.py` по умолчанию прописывает и **KeepImage** — тем же токеном click.ru, заголовком `X-Auth-Token` (а с `--click-ru-user-id` — ещё `X-Auth-UserId`). Токен идёт заголовком, **а не в URL** `/c/<токен>/mcp`: путь с токеном логируется прокси и историей, а конфиг клиента задаёт заголовки напрямую. Ручной коннектор по адресу с токеном в пути остаётся фолбеком для сред, где заголовки не задать (см. ниже).
 
 Установщик заодно сохраняет токен click.ru в реестр ключей (сервис `clickru`, а с `--click-ru-user-id` — ещё `clickru_user_id`), поэтому скрипт `upload_creatives_to_storage.py` работает сразу после подключения MCP — отдельный `manage_credentials set clickru` больше не нужен. При `--dry-run` и `--remove` реестр не трогается; токен нигде не печатается целиком (только маска).
 
