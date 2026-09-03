@@ -9,6 +9,7 @@
 | `yandex-direct` | `https://direct-mcp.aihub.click.ru/mcp` | 50 инструментов Direct API v501 (кампании, ЕПК, группы, объявления, ключи, ставки, отчёты, справочники) |
 | `yandex-wordstat` | `https://wordstat-mcp.aihub.click.ru/mcp` | Частотность поисковых запросов пачкой (до 1000 фраз за вызов). Похожих запросов, ассоциаций, регионов и динамики сервер **не отдаёт** |
 | `vk-ads` | `https://vkads-mcp.aihub.click.ru/mcp` | 44 инструмента VK Ads API (`vk_ads_*`: кампании, группы, объявления, аудитории, статистика) |
+| `KeepImage` (хранилище картинок) | `https://storage.aihub.click.ru/mcp` | Временное файловое хранилище: публикует картинку → публичная ссылка без авторизации, живёт ≤2 ч. Нужно, чтобы заливать локальные креативы в Директ (`adimages_add(image_url)`) и в VK (`vk_ads_content_upload_image`). Инструменты: `storage_publish_image`, `storage_list`, `storage_info`, `storage_delete`. HTTP API для больших файлов — `PUT/POST /v1/objects` |
 
 Корневой путь `/` отдаёт 404 — рабочий JSON-RPC endpoint именно `/mcp`. Health-check: `GET /healthz` → `OK`.
 
@@ -21,6 +22,7 @@
 | `yandex-direct` | `Authorization: Bearer <CLICK_RU_TOKEN>`, `X-Client-Login: <логин Директа>`; для мастер-аккаунта click.ru добавить `X-Click-Ru-User-Id` |
 | `yandex-wordstat` | `Authorization: Bearer <CLICK_RU_TOKEN>` (токен проверяется шлюзом через click.ru; ключ Yandex Cloud не нужен — он на стороне сервера) |
 | `vk-ads` | `X-Click-Ru-Token: <CLICK_RU_TOKEN>`, `X-Click-Ru-Account-Id: <ID аккаунта VK Рекламы в click.ru>` |
+| `KeepImage` | `X-Auth-Token: <CLICK_RU_TOKEN>` (или токен прямо в адресе: `/c/<CLICK_RU_TOKEN>[/<user-id>]/mcp`); для мастер-аккаунта click.ru добавить `X-Auth-UserId: <ID пользователя>`. Тот же токен click.ru, что у Директа |
 
 Примечания:
 
@@ -29,6 +31,7 @@
 - ID аккаунта VK Рекламы в click.ru: `GET /accounts` в https://api.click.ru/V0/docs/.
 - Альтернативы click.ru для VK (готовый `X-VK-Ads-Token`, OAuth `X-VK-Ads-Client-Id` + `X-VK-Ads-Client-Secret`) сервер тоже принимает — см. его сообщение об ошибке.
 - Токен click.ru — секрет. В git не коммитим: в репозитории только плейсхолдеры, реальные значения пишутся в конфиги клиентов установщиком.
+- **KeepImage** проще всего подключить коннектором по адресу с токеном в пути: `https://storage.aihub.click.ru/c/<CLICK_RU_TOKEN>/mcp` (заголовки в окне коннектора не задаются). Через `mcp-remote` для Claude Desktop — блок `mcpServers.KeepImage` с `command: npx`, `args: ["-y","mcp-remote","https://storage.aihub.click.ru/mcp","--header","X-Auth-Token:${CLICK_TOKEN}"]`, `env: {"CLICK_TOKEN":"<токен>"}` (без пробела после двоеточия в `--header`; после правки — полный перезапуск Desktop). Скрипт `scripts/upload_creatives_to_storage.py` ходит в KeepImage по HTTP напрямую и коннектора не требует — ему нужен только токен `clickru` в реестре ключей.
 
 ## Автоматическая запись конфигов (рекомендуется)
 
