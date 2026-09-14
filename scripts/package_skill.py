@@ -47,9 +47,16 @@ EXCLUDE_DIRS = {
     ".venv",
     "venv",
     "dist",
+    ".pytest_cache",   # кэш прогона тестов — к работе скилла отношения не имеет
+    ".claude",         # локальные настройки среды разработчика (settings.local.json)
+    ".cursor",
+    ".idea",
+    ".vscode",
 }
 EXCLUDE_GLOBS = {"*.pyc", "*.pyo", "*.swp", "*.bak", "*.tmp"}
-EXCLUDE_FILES = {".DS_Store", ".gitignore", "Thumbs.db"}
+EXCLUDE_FILES = {".DS_Store", ".gitignore", "Thumbs.db",
+                 # инструменты разработки скилла, а не сам скилл
+                 "pytest.ini", "requirements-dev.txt", "package.sh", ".mcp.json"}
 
 # Секреты. .skill рассылается коллегам и клиентам, поэтому файлы с ключами
 # не просто пропускаются — их наличие останавливает упаковку (см. scan_secrets).
@@ -300,7 +307,7 @@ def main():
     print(f"   1. Распакуй {result.name} как обычный zip")
     print(f"   2. Положи папку {skill_path.name}/ куда удобно (например ~/Documents/)")
     print(f"   3. Запусти один раз: python {skill_path.name}/install.py")
-    print(f"   4. Открой Cowork — скилл будет доступен")
+    print(f"   4. Перезапусти агентную среду — скилл будет доступен")
     sys.exit(0)
 
 

@@ -19,7 +19,7 @@
 
 | Сервер | Заголовки на каждый запрос |
 |---|---|
-| `yandex-direct` | `Authorization: Bearer <CLICK_RU_TOKEN>`, `X-Client-Login: <логин Директа>`; для мастер-аккаунта click.ru добавить `X-Click-Ru-User-Id` |
+| `yandex-direct` | `X-Click-Ru-Token: <CLICK_RU_TOKEN>`, `X-Client-Login: <логин Директа>`; для мастер-аккаунта click.ru добавить `X-Click-Ru-User-Id`. **`Authorization: Bearer` шлюз Директа не принимает** — отвечает «Invalid credentials headers: X-Click-Ru-Token обязателен в прокси-режиме». Альтернатива для окон коннектора, где заголовков нет: токен в пути — `/c/<CLICK_RU_TOKEN>/mcp`, `/c/<CLICK_RU_TOKEN>/<user-id>/mcp` или `/c/<логин Директа>/<CLICK_RU_TOKEN>/<user-id>` |
 | `yandex-wordstat` | `Authorization: Bearer <CLICK_RU_TOKEN>` (токен проверяется шлюзом через click.ru; ключ Yandex Cloud не нужен — он на стороне сервера) |
 | `vk-ads` | `X-Click-Ru-Token: <CLICK_RU_TOKEN>`, `X-Click-Ru-Account-Id: <ID аккаунта VK Рекламы в click.ru>` |
 | `KeepImage` | `X-Auth-Token: <CLICK_RU_TOKEN>` (или токен прямо в адресе: `/c/<CLICK_RU_TOKEN>[/<user-id>]/mcp`); для мастер-аккаунта click.ru добавить `X-Auth-UserId: <ID пользователя>`. Тот же токен click.ru, что у Директа |
@@ -67,7 +67,7 @@ python -m scripts.setup_vk_ads_mcp \
     "yandex-direct": {
       "url": "https://direct-mcp.aihub.click.ru/mcp",
       "headers": {
-        "Authorization": "Bearer <CLICK_RU_TOKEN>",
+        "X-Click-Ru-Token": "<CLICK_RU_TOKEN>",
         "X-Client-Login": "<ЛОГИН_ДИРЕКТА>"
       }
     },
@@ -100,7 +100,7 @@ python -m scripts.setup_vk_ads_mcp \
     "yandex-direct": {
       "type": "http",
       "url": "https://direct-mcp.aihub.click.ru/mcp",
-      "headers": { "Authorization": "Bearer <CLICK_RU_TOKEN>", "X-Client-Login": "<ЛОГИН_ДИРЕКТА>" }
+      "headers": { "X-Click-Ru-Token": "<CLICK_RU_TOKEN>", "X-Client-Login": "<ЛОГИН_ДИРЕКТА>" }
     }
   }
 }
@@ -117,7 +117,7 @@ Claude Desktop не принимает произвольные HTTP-загол�
       "command": "npx",
       "args": [
         "-y", "mcp-remote", "https://direct-mcp.aihub.click.ru/mcp",
-        "--header", "Authorization: Bearer <CLICK_RU_TOKEN>",
+        "--header", "X-Click-Ru-Token:<CLICK_RU_TOKEN>",
         "--header", "X-Client-Login: <ЛОГИН_ДИРЕКТА>"
       ]
     }

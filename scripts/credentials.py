@@ -1,8 +1,8 @@
 """
 credentials.py — универсальная система хранения и чтения API-ключей для скилла.
 
-Используется скриптами скилла (generate_creative_images, generate_creative_videos,
-forecast_cpc и т.д.) для получения ключей без жёсткой привязки к env-переменным.
+Используется скриптами скилла (generate_creative_images, forecast_cpc,
+upload_creatives_to_storage и т.д.) для получения ключей без жёсткой привязки к env-переменным.
 
 Стратегия поиска ключа:
 1. Если задана env-переменная (например OPENAI_API_KEY) — берём её.
@@ -14,7 +14,6 @@ CLI `python -m scripts.manage_credentials set <service>`.
 
 Поддерживаемые сервисы (`SERVICE_REGISTRY`):
 - openai         — OpenAI API (DALL-E, GPT-image, ChatGPT)
-- replicate      — Replicate hub видео-моделей (Kling, Seedance, Hailuo и др.)
 - yandex_direct  — OAuth-токен Яндекс.Директа для прямой заливки через API
 - clickru        — Click.ru токен прокси-доступа к API Яндекс.Директа
 - clickru_login  — Click.ru логин аккаунта Яндекс.Директа (заголовок Client-Login)
@@ -56,12 +55,6 @@ SERVICE_REGISTRY = {
         "description": "OpenAI API key для генерации картинок (gpt-image-1 / dall-e-3)",
         "how_to_get": "https://platform.openai.com/api-keys (нужен аккаунт + платёжный метод)",
         "format_hint": "sk-...",
-    },
-    "replicate": {
-        "env": "REPLICATE_API_TOKEN",
-        "description": "Replicate — hub видео-моделей (Kling, Seedance, Hailuo и др.)",
-        "how_to_get": "https://replicate.com/account/api-tokens",
-        "format_hint": "r8_...",
     },
     "yandex_direct": {
         "env": "YANDEX_DIRECT_TOKEN",

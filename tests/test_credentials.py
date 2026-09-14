@@ -26,8 +26,8 @@ def test_env_beats_file(monkeypatch):
 
 
 def test_reads_from_credentials_file():
-    set_api_key("replicate", "r8_stored_token")
-    assert load_api_key("replicate") == "r8_stored_token"
+    set_api_key("openai", "sk_stored_token")
+    assert load_api_key("openai") == "sk_stored_token"
 
 
 def test_missing_key_names_env_var():
@@ -74,6 +74,6 @@ def test_mask_hides_middle_and_short_keys():
 
 
 def test_registry_covers_expected_services():
-    for name in ("openai", "replicate", "yandex_direct", "clickru", "clickru_login", "clickru_user_id"):
+    for name in ("openai", "yandex_direct", "clickru", "clickru_login", "clickru_user_id"):
         assert name in SERVICE_REGISTRY
         assert "env" in SERVICE_REGISTRY[name]

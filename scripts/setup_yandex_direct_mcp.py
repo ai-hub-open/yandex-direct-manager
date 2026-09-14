@@ -6,14 +6,15 @@ setup_yandex_direct_mcp.py — подключает хостовые MCP aihub.c
 (с бэкапом; существующие серверы сохраняются).
 
 Подключаемые серверы (--server, по умолчанию all):
-- yandex-direct    → https://direct-mcp.aihub.click.ru/mcp    (50 инструментов Direct API)
+- yandex-direct    → https://direct-mcp.aihub.click.ru/mcp    (51 инструмент Direct API)
 - yandex-wordstat  → https://wordstat-mcp.aihub.click.ru/mcp  (частотность и семантика Wordstat)
 - KeepImage        → https://storage.aihub.click.ru/mcp       (хранилище картинок для заливки
                      локальных креативов в Директ через adimages_add(image_url))
 
 Авторизация у всех трёх — один API-токен click.ru
-(https://click.ru/userinfo.html → «API Token» → «Создать»). Токен передаётся
-заголовком (Authorization / X-Auth-Token), а НЕ в URL — путь /c/<token>/mcp
+(https://click.ru/userinfo.html → «API Token» → «Создать»). Заголовок у каждого
+сервера свой: Директ — X-Click-Ru-Token, Wordstat — Authorization: Bearer,
+KeepImage — X-Auth-Token. Токен идёт заголовком, а НЕ в URL — путь /c/<token>/mcp
 логируется прокси и историей, поэтому установщик его не использует. Для мастер-
 аккаунта click.ru тот же --click-ru-user-id уходит и в Direct, и в KeepImage.
 
@@ -106,7 +107,10 @@ TARGETS = {
 # ---------- заголовки и блоки ----------
 
 def direct_headers(token: str, client_login: str | None, user_id: str | None) -> dict:
-    headers = {"Authorization": f"Bearer {token}"}
+    # Шлюз Директа принимает ТОЛЬКО X-Click-Ru-Token (или X-Yandex-Token для прямого
+    # OAuth), либо креды в пути URL. Authorization: Bearer он отвергает:
+    # «Invalid credentials headers: X-Click-Ru-Token обязателен в прокси-режиме».
+    headers = {"X-Click-Ru-Token": token}
     if client_login:
         headers["X-Client-Login"] = client_login
     if user_id:

@@ -1,11 +1,14 @@
 # Секреты — НЕ коммитим
 .env
 .env.local
+# установщик пишет сюда живой токен click.ru
+.mcp.json
 
 # Python
 __pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
 
 # Рабочие папки кампаний (могут содержать данные клиента)
 direct-campaigns/

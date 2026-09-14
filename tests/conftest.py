@@ -1,6 +1,6 @@
 """Общие фикстуры: изоляция HOME/env и запрет сети.
 
-Тесты скилла не ходят в OpenAI, Replicate и Директ: любой реальный connect
+Тесты скилла не ходят в OpenAI, KeepImage и Директ: любой реальный connect
 падает AssertionError. Реальные ключи разработчика в ~/.yandex-direct-manager
 не трогаем — HOME подменяется на tmp_path.
 """
@@ -47,10 +47,6 @@ def fast_sleep(monkeypatch):
     """Подмена time.sleep в модулях с задержками (retry/poll/throttle)."""
     import scripts.forecast_cpc as forecast_cpc
     import scripts.generate_creative_images as gen_images
-    import scripts.generate_creative_videos as gen_videos
-    import scripts.video_providers.replicate as replicate
 
     monkeypatch.setattr(forecast_cpc.time, "sleep", lambda *_a, **_kw: None)
     monkeypatch.setattr(gen_images.time, "sleep", lambda *_a, **_kw: None)
-    monkeypatch.setattr(gen_videos.time, "sleep", lambda *_a, **_kw: None)
-    monkeypatch.setattr(replicate.time, "sleep", lambda *_a, **_kw: None)
