@@ -9,6 +9,7 @@
 | `yandex-direct` | `https://direct-mcp.aihub.click.ru/mcp` | 50 инструментов Direct API v501 (кампании, ЕПК, группы, объявления, ключи, ставки, отчёты, справочники) |
 | `yandex-wordstat` | `https://wordstat-mcp.aihub.click.ru/mcp` | Частотность поисковых запросов пачкой (до 1000 фраз за вызов). Похожих запросов, ассоциаций, регионов и динамики сервер **не отдаёт** |
 | `vk-ads` | `https://vkads-mcp.aihub.click.ru/mcp` | 44 инструмента VK Ads API (`vk_ads_*`: кампании, группы, объявления, аудитории, статистика) |
+| `yandex-metrika` (в сессии может называться иначе, напр. `metrikaCM`) | `https://metrika-mcp.aihub.click.ru/c/<CLICK_RU_TOKEN>` (варианты адреса — в «Авторизации») | 13 инструментов `yandex_metrika_*`: счётчики, цели (с достижениями за N дней), сегменты, отчёты (таблица и динамика), клиенты Директа счётчика. Записи (`goals_add/update/delete`, `segments_add/delete`) поддерживают `dry_run`. Нужен скиллу `yandex-direct-manager` на Шагах 0.5 (разведка аккаунта), 7, 10 |
 | `KeepImage` (хранилище картинок) | `https://storage.aihub.click.ru/mcp` | Временное файловое хранилище: публикует картинку → публичная ссылка без авторизации, живёт ≤2 ч. Нужно, чтобы заливать локальные креативы в Директ (`adimages_add(image_url)`) и в VK (`vk_ads_content_upload_image`). Инструменты: `storage_publish_image`, `storage_list`, `storage_info`, `storage_delete`. HTTP API для больших файлов — `PUT/POST /v1/objects` |
 
 Корневой путь `/` отдаёт 404 — рабочий JSON-RPC endpoint именно `/mcp`. Health-check: `GET /healthz` → `OK`.
@@ -22,6 +23,7 @@
 | `yandex-direct` | `X-Click-Ru-Token: <CLICK_RU_TOKEN>`, `X-Client-Login: <логин Директа>`; для мастер-аккаунта click.ru добавить `X-Click-Ru-User-Id`. **`Authorization: Bearer` шлюз Директа не принимает** — отвечает «Invalid credentials headers: X-Click-Ru-Token обязателен в прокси-режиме». Альтернатива для окон коннектора, где заголовков нет: токен в пути — `/c/<CLICK_RU_TOKEN>/mcp`, `/c/<CLICK_RU_TOKEN>/<user-id>/mcp` или `/c/<логин Директа>/<CLICK_RU_TOKEN>/<user-id>` |
 | `yandex-wordstat` | `Authorization: Bearer <CLICK_RU_TOKEN>` (токен проверяется шлюзом через click.ru; ключ Yandex Cloud не нужен — он на стороне сервера) |
 | `vk-ads` | `X-Click-Ru-Token: <CLICK_RU_TOKEN>`, `X-Click-Ru-Account-Id: <ID аккаунта VK Рекламы в click.ru>` |
+| `yandex-metrika` | Токен — **в адресе**, заголовков нет. Три формы: `https://metrika-mcp.aihub.click.ru/c/<CLICK_RU_TOKEN>` — через click.ru, видны все аккаунты Яндекса с Метрикой, подключённые в click.ru; `https://metrika-mcp.aihub.click.ru/c/<CLICK_RU_TOKEN>/<аккаунт>` — то же, но закреплён один аккаунт (логин или ID интеграции Метрики в click.ru, их показывает `yandex_metrika_accounts_get`); `https://metrika-mcp.aihub.click.ru/y/<OAuth-токен Яндекса>` — прямой режим без click.ru, OAuth-токен с доступом к Метрике. Для режима click.ru **аккаунт Яндекса с Метрикой должен быть подключён в интеграциях click.ru** (инструкция: https://help.click.ru/97#connect-yandex-metrica) — иначе `yandex_metrika_accounts_get` вернёт пустой список с подсказкой «не подключена Яндекс Метрика», а остальные вызовы — ошибку. Адрес с токеном — секрет, как пароль |
 | `KeepImage` | `X-Auth-Token: <CLICK_RU_TOKEN>` (или токен прямо в адресе: `/c/<CLICK_RU_TOKEN>[/<user-id>]/mcp`); для мастер-аккаунта click.ru добавить `X-Auth-UserId: <ID пользователя>`. Тот же токен click.ru, что у Директа |
 
 Примечания:
@@ -133,7 +135,8 @@ Claude Desktop не принимает произвольные HTTP-загол�
 
 1. **Direct:** вызови `campaigns_get` с `limit: 1` — должен вернуть кампании или пустой список, но не 401.
 2. **Wordstat:** спроси «пробей частотность фразы „кофеварка"» — агент должен позвать `wordstat_shows_batch` и вернуть `stat` (показов/мес).
-3. **VK Ads:** вызови `vk_ads_auth_check` — должен вернуть данные пользователя VK Ads.
+3. **Метрика:** вызови `yandex_metrika_accounts_get` — непустой `accounts`; затем `yandex_metrika_counters_get` с `limit: 1`.
+4. **VK Ads:** вызови `vk_ads_auth_check` — должен вернуть данные пользователя VK Ads.
 
 Если сервер не появился: проверь URL (ровно `/mcp` на конце), токен и перезапуск клиента. Ошибка 401 — токен click.ru недействителен или заголовок назван иначе, чем ждёт шлюз (сверься с таблицей выше).
 
