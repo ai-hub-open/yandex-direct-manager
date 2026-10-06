@@ -486,7 +486,7 @@ stdio-режима, когда файлы на той же машине, что 
 
 ### Вне зоны MCP по определению
 
-Wordstat (частотность) — отдельный контур: MCP `yandex-wordstat` (`references/wordstat-mcp.md`), фолбек `scripts/wordstat_api.py` со своим токеном Cloud. Создание целей Метрики — Metrika Management API, `metrika-goals-setup.md`. MCP нужен только на **привязке** счётчика и целей к кампании, и это он умеет.
+Wordstat (частотность) — отдельный контур: MCP `yandex-wordstat` (`references/wordstat-mcp.md`), фолбек `scripts/wordstat_api.py` со своим токеном Cloud. Счётчики, цели и сегменты Метрики — отдельный MCP Метрики (`*yandex_metrika_*`), фолбек — Management API; всё в `metrika-goals-setup.md`. MCP Директа нужен только на **привязке** счётчика и целей к кампании (`counter_ids`, `priority_goals`), и это он умеет. Условие ретаргетинга из сегмента Метрики не создаёт ни один из двух MCP — ручной пункт.
 
 ---
 
