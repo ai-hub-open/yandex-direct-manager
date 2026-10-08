@@ -1,0 +1,46 @@
+# Версия плагина должна совпадать везде, иначе пользователи не получат обновление:
+# Claude Code раздаёт новую версию только когда меняется "version" в plugin.json.
+name: version-check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare versions
+        run: |
+          set -euo pipefail
+          plugin=$(python3 -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])")
+          file=$(tr -d '[:space:]' < VERSION)
+          changelog=$(grep -m1 -oP '^## \K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md)
+          echo "plugin.json=$plugin VERSION=$file CHANGELOG=$changelog"
+
+          fail=0
+          [ "$plugin" = "$file" ]      || { echo "::error::VERSION ($file) != plugin.json ($plugin)"; fail=1; }
+          [ "$plugin" = "$changelog" ] || { echo "::error::CHANGELOG ($changelog) != plugin.json ($plugin)"; fail=1; }
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF#refs/tags/v}"
+            [ "$plugin" = "$tag" ] || { echo "::error::тег v$tag != plugin.json ($plugin)"; fail=1; }
+          fi
+          exit $fail
+
+      - name: Version bumped vs main (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch --depth 1 origin "${{ github.base_ref }}"
+          base=$(git show "origin/${{ github.base_ref }}:.claude-plugin/plugin.json" 2>/dev/null \
+                 | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])" || echo "none")
+          head=$(python3 -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])")
+          echo "base=$base head=$head"
+          if [ "$base" = "$head" ]; then
+            echo "::warning::Версия не поднята ($head). Если PR меняет скилл — без новой версии пользователи плагина изменения не получат."
+          fi

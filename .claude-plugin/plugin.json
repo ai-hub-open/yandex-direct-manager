@@ -1,0 +1,10 @@
+{
+  "name": "yandex-direct-manager",
+  "version": "0.18.0",
+  "description": "Создание рекламной кампании в Яндекс.Директе от брифа до DRAFT: семантика через Wordstat, минусы, объявления, цели в Метрике, стратегия и заливка через MCP",
+  "author": { "name": "ai-hub-open" },
+  "homepage": "https://github.com/ai-hub-open/yandex-direct-manager",
+  "repository": "https://github.com/ai-hub-open/yandex-direct-manager",
+  "license": "Apache-2.0",
+  "keywords": ["yandex-direct", "wordstat", "metrika", "ppc", "ads"]
+}
