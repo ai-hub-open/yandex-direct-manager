@@ -52,6 +52,8 @@ EXCLUDE_DIRS = {
     ".cursor",
     ".idea",
     ".vscode",
+    ".claude-plugin",  # манифест плагина для Claude Code — в архиве .skill не нужен
+    ".github",         # CI репозитория
 }
 EXCLUDE_GLOBS = {"*.pyc", "*.pyo", "*.swp", "*.bak", "*.tmp"}
 EXCLUDE_FILES = {".DS_Store", ".gitignore", "Thumbs.db",

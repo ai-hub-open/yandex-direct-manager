@@ -40,6 +40,25 @@
 
 ## Установка
 
+### Claude Code — плагином, с обновлениями
+
+В сессии Claude Code:
+
+```
+/plugin marketplace add ai-hub-open/claude-plugins
+/plugin install yandex-direct-manager@ai-hub-open
+```
+
+Затем включите автообновление: `/plugin` → **Marketplaces** → `ai-hub-open` → **Enable auto-update**.
+С ним новые версии приходят сами при старте сессии. Без него — командой
+`/plugin marketplace update ai-hub-open`.
+
+Python-зависимости плагин сам не ставит — один раз выполните `python install.py` в папке плагина
+(путь покажет `/plugin` → yandex-direct-manager). Если раньше скилл лежал папкой в `~/.claude/skills/`,
+удалите её, иначе скилл будет загружаться дважды.
+
+### Вручную — папкой или архивом
+
 ```bash
 git clone https://github.com/ai-hub-open/yandex-direct-manager.git
 cd yandex-direct-manager
