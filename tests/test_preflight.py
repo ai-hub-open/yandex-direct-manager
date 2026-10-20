@@ -107,6 +107,68 @@ def test_long_display_url_path_is_error():
     assert "display_url_path" in _messages(_errors(validate_combined_ad(ad, "G")))
 
 
+# --- текст: «узкие» знаки -----------------------------------------------------
+# Справка API ads.add: текст — не более 81 символа без учёта «узких» плюс не более
+# 15 «узких». Узкие — ! , . ; : "
+
+def test_narrow_chars_do_not_count_toward_text_limit():
+    """81 обычный символ и пунктуация сверху — Директ такой текст принимает."""
+    ad = _ok_combined_ad()
+    text = "Слово, " * 13 + "Ура."  # 81 обычный символ (с пробелами) + 14 узких = 95
+    assert len(text) > LIMITS["text"]
+    ad["texts"] = [text]
+    assert not _errors(validate_combined_ad(ad, "G"))
+
+
+def test_text_over_limit_without_narrow_chars_is_error():
+    ad = _ok_combined_ad()
+    ad["texts"] = ["Я" * (LIMITS["text"] + 1)]
+    assert "текст 1" in _messages(_errors(validate_combined_ad(ad, "G")))
+
+
+def test_too_many_narrow_chars_in_text_is_error():
+    ad = _ok_combined_ad()
+    ad["texts"] = ["Текст" + "," * (LIMITS["text_narrow"] + 1)]
+    assert "узких" in _messages(_errors(validate_combined_ad(ad, "G")))
+
+
+def test_fifteen_narrow_chars_in_text_pass():
+    ad = _ok_combined_ad()
+    ad["texts"] = ["Текст" + "," * LIMITS["text_narrow"]]
+    assert not _errors(validate_combined_ad(ad, "G"))
+
+
+def test_narrow_chars_count_toward_title_limit():
+    """В заголовке «узкие» считаются наравне с остальными — в отличие от текста."""
+    ad = _ok_combined_ad()
+    ad["titles"] = ["Я" * (LIMITS["title"] - 1) + ",,"]
+    assert "заголовок 1" in _messages(_errors(validate_combined_ad(ad, "G")))
+
+
+# --- отображаемая ссылка: допустимые символы ----------------------------------
+
+def test_display_url_path_allowed_chars_pass():
+    for path in ("kupit-kurs", "курсы/вокал", "акция№1", "skidka-50%", "top#1"):
+        ad = _ok_combined_ad()
+        ad["display_url_path"] = path
+        assert not _errors(validate_combined_ad(ad, "G")), path
+
+
+def test_display_url_path_forbidden_chars_are_error():
+    for path in ("kupit kurs", "kupit_kurs", "kurs?", "kurs.ru", "kurs!"):
+        ad = _ok_combined_ad()
+        ad["display_url_path"] = path
+        assert "display_url_path" in _messages(_errors(validate_combined_ad(ad, "G"))), path
+
+
+def test_display_url_path_double_separators_are_error():
+    """Справка API: сдвоенные -- и // запрещены, даже если сами символы допустимы."""
+    for path in ("kupit--kurs", "kupit//kurs"):
+        ad = _ok_combined_ad()
+        ad["display_url_path"] = path
+        assert "display_url_path" in _messages(_errors(validate_combined_ad(ad, "G"))), path
+
+
 # --- объявление: посадочная и расширения --------------------------------------
 
 def test_missing_href_and_business_id_is_error():
@@ -146,6 +208,40 @@ def test_sitelink_without_url_is_error():
     ad = _ok_combined_ad()
     ad["sitelinks"] = [{"title": "Цены"}]
     assert _errors(validate_combined_ad(ad, "G"))
+
+
+# --- быстрые ссылки: суммарная длина заголовков по четвёркам -------------------
+
+def _sitelinks(titles):
+    return [{"title": t, "url": "https://example.com"} for t in titles]
+
+
+def test_sitelinks_1_4_over_66_is_error():
+    """Каждый заголовок ≤30, но вместе 67 — Директ набор отклонит."""
+    ad = _ok_combined_ad()
+    ad["sitelinks"] = _sitelinks(["Я" * 30, "Я" * 30, "Я" * 5, "Я" * 2])
+    assert "1–4" in _messages(_errors(validate_combined_ad(ad, "G")))
+
+
+def test_sitelinks_1_4_exactly_66_pass():
+    ad = _ok_combined_ad()
+    ad["sitelinks"] = _sitelinks(["Я" * 30, "Я" * 30, "Я" * 4, "Я" * 2])
+    assert not _errors(validate_combined_ad(ad, "G"))
+
+
+def test_sitelinks_5_8_over_66_is_error():
+    ad = _ok_combined_ad()
+    ad["sitelinks"] = _sitelinks(["Цены"] * 4 + ["Я" * 30, "Я" * 30, "Я" * 7])
+    messages = _messages(_errors(validate_combined_ad(ad, "G")))
+    assert "5–8" in messages
+    assert "1–4" not in messages
+
+
+def test_sitelinks_limit_is_per_four_not_total():
+    """Восемь ссылок по 16 символов — 128 всего, но по 64 в каждой четвёрке: проходит."""
+    ad = _ok_combined_ad()
+    ad["sitelinks"] = _sitelinks(["Я" * 16] * 8)
+    assert not _errors(validate_combined_ad(ad, "G"))
 
 
 def test_long_callout_is_error():
