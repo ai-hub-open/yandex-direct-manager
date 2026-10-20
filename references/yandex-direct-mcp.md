@@ -144,7 +144,7 @@ MCP-сервер `yandex-direct-mcp` (Bun/TypeScript) — мост к API Янд
 | `attribution_model` | `FCCD` \| `LC` \| `LSCCD` \| `AUTO` | По умолч. AUTO |
 | `tracking_params` | string | UTM-метки, напр. `utm_source=yandex&utm_campaign={campaign_id}` |
 
-**Для `UNIFIED` стратегия обязательна** — без `search_strategy` и `network_strategy` инструмент вернёт ошибку. Незаданная сторона автоматически выключается (`SERVING_OFF`).
+**Для `UNIFIED` стратегия обязательна** — без `search_strategy` и `network_strategy` инструмент вернёт ошибку. ⚠️ Незаданная сторона мостом **молча выключается** (`SERVING_OFF`): забытая `network_strategy` — это выключенная РСЯ без всякой ошибки. Передавай обе стороны явно, по таблице «Сочетания сторон» ниже.
 
 **Недельный бюджет — это `weekly_spend_limit` внутри стратегии, а не `daily_budget`.** Автостратегии живут на недельном бюджете; `daily_budget` для них не применяется.
 
@@ -154,7 +154,7 @@ MCP-сервер `yandex-direct-mcp` (Bun/TypeScript) — мост к API Янд
 
 **Обязательно:** `id`. Остальные параметры — те же, что у `campaigns_add`.
 
-⚠️ **При смене стратегии передавай обе стороны** (`search_strategy` и `network_strategy`) — API заменяет стратегию целиком, инструмент проверяет это и вернёт ошибку, если задана только одна. Для выключенной стороны — `{type: "SERVING_OFF"}`.
+⚠️ **При смене стратегии передавай обе стороны** (`search_strategy` и `network_strategy`) — API заменяет стратегию целиком, инструмент проверяет это и вернёт ошибку, если задана только одна. Пара сторон — по таблице «Сочетания сторон»; `{type: "SERVING_OFF"}` — только для стороны, которой в структуре РК нет.
 
 Так же обновляются `counter_ids` и `priority_goals` (Шаг 7, привязка целей Метрики).
 
@@ -172,14 +172,30 @@ MCP-сервер `yandex-direct-mcp` (Bun/TypeScript) — мост к API Янд
 
 **Типы на поиске:** `HIGHEST_POSITION`, `WB_MAXIMUM_CLICKS`, `WB_MAXIMUM_CONVERSION_RATE`, `AVERAGE_CPC`, `AVERAGE_CPA`, `AVERAGE_CRR`, `PAY_FOR_CONVERSION`, `PAY_FOR_CONVERSION_CRR`, `WEEKLY_CLICK_PACKAGE`, `AVERAGE_CPA_MULTIPLE_GOALS`, `PAY_FOR_CONVERSION_MULTIPLE_GOALS`, `MAX_PROFIT`, `SERVING_OFF`.
 
-**В сетях (для ЕПК/`UNIFIED`) — только автостратегии.** Допустимы `WB_MAXIMUM_CLICKS` (авто «Максимум кликов»), конверсионные (`PAY_FOR_CONVERSION`, `AVERAGE_CPA`, `AVERAGE_CRR`, `PAY_FOR_CONVERSION_CRR`, `*_MULTIPLE_GOALS`, `MAX_PROFIT`) и `SERVING_OFF`.
+**В сетях (для ЕПК/`UNIFIED`)** тип зависит от поисковой стороны — сочетания ниже. Ручных ставок и `MAXIMUM_COVERAGE` в сетях ЕПК нет: Яндекс отключил ручное управление ставками в РСЯ и поиск+РСЯ в 2024 году ([eLama](https://elama.ru/blog/yandeks-direkt-otklyuchaet-ruchnoe-upravlenie-stavkami-vrsya-kak-podgotovitsya-ichto-delat/)).
 
-> ⚠️ **`MAXIMUM_COVERAGE` («максимальный охват»), `NETWORK_DEFAULT` и ручные ставки в сетях для ЕПК Директ отклоняет.** Яндекс отключил ручное управление ставками в РСЯ и поиск+РСЯ ещё в 2024 году (три этапа: с 22.04.2024 — запрет создавать/возобновлять/переключать, с 20.05.2024 — запрет редактировать ставки, июнь 2024 — остановка активных РК с ручным управлением). Для сетей остались ровно две автостратегии — «Максимум конверсий» и авто «Максимум кликов». Источник: [eLama — «Яндекс Директ отключает ручное управление ставками в РСЯ»](https://elama.ru/blog/yandeks-direkt-otklyuchaet-ruchnoe-upravlenie-stavkami-vrsya-kak-podgotovitsya-ichto-delat/). Значения `NETWORK_DEFAULT` / `MAXIMUM_COVERAGE` остаются для легаси-типов кампаний, но не для `UNIFIED`.
+### Сочетания сторон в ЕПК
+
+Источник — [справка API, «Стратегии показа»](https://yandex.ru/dev/direct/doc/dg/objects/campaign-strategies.html). Неверная пара — отказ `4000` «strategies are not compatible».
+
+| Где крутится | `search_strategy` | `network_strategy` |
+|---|---|---|
+| только поиск | автостратегия или `HIGHEST_POSITION` | `SERVING_OFF` |
+| поиск + РСЯ | автостратегия с бюджетом | `NETWORK_DEFAULT` (без `limit_percent`) |
+| только РСЯ | `SERVING_OFF` | автостратегия с `weekly_spend_limit` |
+
+Отсюда допустимые сетевые типы:
+
+- **`NETWORK_DEFAULT`** — сеть идёт за автостратегией поиска. Единственный способ держать РСЯ включённой при автостратегии на поиске. `limit_percent` для ЕПК не передаём.
+- **`SERVING_OFF`** — РСЯ выключена. Обязателен при `HIGHEST_POSITION` на поиске; в остальных случаях — только если РСЯ в структуре РК нет.
+- **Автостратегии** `WB_MAXIMUM_CLICKS`, `WB_MAXIMUM_CONVERSION_RATE`, `AVERAGE_CPC`, `AVERAGE_CPA`, `AVERAGE_CRR`, `PAY_FOR_CONVERSION`, `PAY_FOR_CONVERSION_CRR` — **только при `search_strategy: SERVING_OFF`** (вариант «только РСЯ»). Одна и та же автостратегия на обеих сторонах — это и есть ошибка `4000`. `*_MULTIPLE_GOALS` и `MAX_PROFIT` в сетях ЕПК недоступны.
+
+Выбор стороны по `channel` из `05_campaign_structure.json` — `bidding-strategy.md` → «Сочетания сторон в ЕПК».
 
 | Тип | Обязательные | Опциональные |
 |---|---|---|
 | `HIGHEST_POSITION` / `MAXIMUM_COVERAGE` / `SERVING_OFF` | — | — |
-| `NETWORK_DEFAULT` | — | `limit_percent` (10–100) |
+| `NETWORK_DEFAULT` | — | `limit_percent` (10–100) — только легаси-типы кампаний, в ЕПК не передавать |
 | `WB_MAXIMUM_CLICKS` | `weekly_spend_limit` | `bid_ceiling` |
 | `WB_MAXIMUM_CONVERSION_RATE` | `weekly_spend_limit`, `goal_id` | `bid_ceiling` |
 | `AVERAGE_CPC` | `average_cpc` | `weekly_spend_limit` |
@@ -233,7 +249,7 @@ MCP-сервер `yandex-direct-mcp` (Bun/TypeScript) — мост к API Янд
 | `href` | string | Ссылка на сайт |
 | `business_id` | int | Профиль организации вместо ссылки |
 | `image_hashes` | string[] | До 5, из `adimages_add` |
-| `display_url_path` | string | Отображаемая ссылка, до 20 символов |
+| `display_url_path` | string | Отображаемая ссылка, до 20 символов: буквы, цифры, `-`, `/`, `№`, `%`, `#` |
 | `sitelink_set_id` | int | Набор быстрых ссылок из `sitelinks_add` |
 | `ad_extension_ids` | int[] | Уточнения из `adextensions_add` |
 | `video_extension_ids` | int[] | Видеодополнения — **ID взять негде**, см. «Чего MCP не умеет» |
@@ -272,7 +288,7 @@ MCP-сервер `yandex-direct-mcp` (Bun/TypeScript) — мост к API Янд
 
 ⚠️ **Наборы неизменяемы.** Чтобы поправить одну ссылку, создаётся новый набор и объявление перепривязывается.
 
-Лимиты Директа (мост не проверяет, проверяет `preflight.py`): заголовок ≤30 символов, описание ≤60, адрес ≤1024.
+Лимиты Директа (мост не проверяет, проверяет `preflight.py`): заголовок ≤30 символов, описание ≤60, адрес ≤1024; заголовки ссылок 1–4 вместе ≤66 символов, 5–8 — тоже ≤66.
 
 ### `sitelinks_get` / `sitelinks_delete`
 

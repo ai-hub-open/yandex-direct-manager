@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -35,13 +36,15 @@ LIMITS = {
     "videos_max": 6,
     "title": 56,
     "title_word": 22,
-    "text": 81,
+    "text": 81,           # без учёта «узких» знаков
+    "text_narrow": 15,    # «узких» знаков в тексте сверх 81
     "text_word": 23,
     "display_url_path": 20,
     # Расширения
     "sitelinks_max": 8,
     "sitelink_title": 30,
     "sitelink_description": 60,
+    "sitelinks_titles_per_four": 66,  # заголовки 1–4 вместе, 5–8 вместе
     "callout": 25,
     "callouts_account_max": 50,
     # Ключевые и минус-фразы
@@ -50,6 +53,12 @@ LIMITS = {
     "negative_campaign_chars": 20000,
     "negative_group_chars": 4096,
 }
+
+# «Узкие» знаки по справке API ads.add: в тексте не входят в 81, в заголовке считаются.
+NARROW_CHARS = frozenset('!,.;:"')
+
+# Отображаемая ссылка: буквы, цифры, - / № % #; сдвоенные -- и // запрещены.
+DISPLAY_URL_PATH_RE = re.compile(r"[^\W_]|[-/№%#]")
 
 # Рекомендации скилла, а не жёсткие лимиты API.
 RECOMMENDED_TITLES_MIN = 3
@@ -70,6 +79,23 @@ class Finding:
 def _longest_word(phrase: str) -> str:
     words = phrase.split()
     return max(words, key=len) if words else ""
+
+
+def _split_narrow(text: str) -> tuple[int, int]:
+    """(обычных символов, «узких» знаков) — так Директ считает длину текста."""
+    narrow = sum(1 for ch in text if ch in NARROW_CHARS)
+    return len(text) - narrow, narrow
+
+
+def _display_url_path_problem(path: str) -> str | None:
+    bad = sorted({ch for ch in path if not DISPLAY_URL_PATH_RE.fullmatch(ch)})
+    if bad:
+        listed = " ".join(repr(ch) for ch in bad)
+        return f"недопустимые символы {listed} — можно только буквы, цифры, -, /, №, %, #"
+    for double in ("--", "//"):
+        if double in path:
+            return f"сдвоенные {double!r} запрещены"
+    return None
 
 
 def _chars_without_spaces(phrases: list[str]) -> int:
@@ -114,8 +140,11 @@ def validate_combined_ad(ad: dict, group_name: str) -> list[Finding]:
         if len(word) > LIMITS["title_word"]:
             err(f"заголовок {i}: слово {word!r} > {LIMITS['title_word']} символов")
     for i, t in enumerate(texts, 1):
-        if len(t) > LIMITS["text"]:
-            err(f"текст {i}={t!r} > {LIMITS['text']} ({len(t)} симв)")
+        regular, narrow = _split_narrow(t)
+        if regular > LIMITS["text"]:
+            err(f"текст {i}={t!r} > {LIMITS['text']} без «узких» знаков ({regular} симв)")
+        if narrow > LIMITS["text_narrow"]:
+            err(f"текст {i}={t!r}: «узких» знаков {narrow} > {LIMITS['text_narrow']}")
         word = _longest_word(t)
         if len(word) > LIMITS["text_word"]:
             err(f"текст {i}: слово {word!r} > {LIMITS['text_word']} символов")
@@ -123,6 +152,10 @@ def validate_combined_ad(ad: dict, group_name: str) -> list[Finding]:
     dup = ad.get("display_url_path")
     if dup and len(dup) > LIMITS["display_url_path"]:
         err(f"display_url_path={dup!r} > {LIMITS['display_url_path']} ({len(dup)} симв)")
+    if dup:
+        problem = _display_url_path_problem(dup)
+        if problem:
+            err(f"display_url_path={dup!r}: {problem}")
 
     # Посадочная: ads_add_responsive требует href или business_id
     if not (ad.get("href") or ad.get("business_id")):
@@ -141,6 +174,12 @@ def validate_combined_ad(ad: dict, group_name: str) -> list[Finding]:
             err(f"sitelink{i}.description={sl['description']!r} длиннее {LIMITS['sitelink_description']}")
         if not (sl.get("url") or sl.get("turbo_page_id")):
             err(f"sitelink{i}: нет ни url, ни turbo_page_id")
+    for start in (0, 4):
+        four = sitelinks[start:start + 4]
+        total = sum(len(sl.get("title", "")) for sl in four)
+        if total > LIMITS["sitelinks_titles_per_four"]:
+            err(f"быстрые ссылки {start + 1}–{start + 4}: заголовки вместе {total} симв "
+                f"> {LIMITS['sitelinks_titles_per_four']} — Директ отклонит набор")
 
     # Уточнения
     callouts = ad.get("callouts") or []
