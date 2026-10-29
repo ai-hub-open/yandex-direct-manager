@@ -201,3 +201,15 @@ def test_main_missing_token_exit_1(tmp_path):
 
 def test_main_requires_workspace_or_files():
     assert up.main([]) == 2
+
+
+def test_collect_images_from_package(tmp_path):
+    """Пакет кампаний (campaigns[]): картинки всех групп всех кампаний."""
+    ws = tmp_path / "ws"
+    _write_png_paths(ws, ["assets/img/a.png", "assets/img/b.png"])
+    (ws / "08_creatives.json").write_text(json.dumps({"campaigns": [
+        {"groups": [{"combined_ad": {"images": ["assets/img/a.png"]}}]},
+        {"groups": [{"combined_ad": {"images": ["assets/img/b.png"]}}]},
+    ]}), encoding="utf-8")
+    imgs = up.collect_images(ws, all_assets=False, explicit=None)
+    assert [p.name for p in imgs] == ["a.png", "b.png"]

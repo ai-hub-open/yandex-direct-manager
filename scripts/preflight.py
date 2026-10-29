@@ -9,10 +9,13 @@ MCP-мост не проверяет длины заголовков, текст
     python -m scripts.preflight --workspace <path>
                                 [--creatives-json <path>]
                                 [--json]              машиночитаемый вывод
+                                [--negatives-only]    только 06_negative_keywords.json (Шаг 6)
 
 Код возврата: 0 — можно заливать, 1 — есть ошибки, заливку не начинать.
 
-JSON-схема входа — assets/creatives_schema_combined_example.json.
+Вход — одна кампания или пакет кампаний (`campaigns[]`), см. scripts/creatives_io.py.
+JSON-схемы — assets/creatives_schema_combined_example.json и
+assets/creatives_schema_package_example.json.
 Лимиты — references/yandex-direct-specs.md.
 """
 from __future__ import annotations
@@ -23,6 +26,8 @@ import re
 import sys
 from dataclasses import dataclass, asdict
 from pathlib import Path
+
+from scripts.creatives_io import campaigns_of, is_package
 
 
 # Лимиты Директа. Источник — references/yandex-direct-specs.md.
@@ -59,6 +64,16 @@ NARROW_CHARS = frozenset('!,.;:"')
 
 # Отображаемая ссылка: буквы, цифры, - / № % #; сдвоенные -- и // запрещены.
 DISPLAY_URL_PATH_RE = re.compile(r"[^\W_]|[-/№%#]")
+
+# Символы ключевых и минус-фраз. Справка Директа «Минус-фразы»: в минус-фразах
+# поддерживаются только операторы " " [] ! +. В ключевой фразе ещё ( ) |.
+# Остальное — буквы, цифры, пробел. Чужой символ («б/у») Директ отклоняет
+# ошибкой 5002 — всю кампанию, а не одну фразу.
+NEGATIVE_OPERATORS = frozenset('"[]!+')
+KEYWORD_OPERATORS = frozenset('"[]!+()|')
+# Справка не запрещает точку, апостроф и дефис («2.0», «mcdonald's», «онлайн-курс»,
+# «-слово» как минус-слово) — пропускаем: ложная ошибка остановила бы заливку.
+NEUTRAL_CHARS = frozenset(" .'-")
 
 # Рекомендации скилла, а не жёсткие лимиты API.
 RECOMMENDED_TITLES_MIN = 3
@@ -100,6 +115,36 @@ def _display_url_path_problem(path: str) -> str | None:
 
 def _chars_without_spaces(phrases: list[str]) -> int:
     return sum(len(p.replace(" ", "")) for p in phrases)
+
+
+def _forbidden_chars(phrase: str, operators: frozenset) -> list[str]:
+    return sorted({ch for ch in phrase if not (ch.isalnum() or ch in operators or ch in NEUTRAL_CHARS)})
+
+
+def suggest_phrase_fix(phrase: str, operators: frozenset) -> str:
+    """Замена для фразы с чужими символами: «б/у» → «бу», «seo/smm» → «seo smm».
+
+    Символ между короткими частями (сокращение до двух букв) убираем, иначе — пробел.
+    """
+    out = []
+    for i, ch in enumerate(phrase):
+        if ch.isalnum() or ch in operators or ch in NEUTRAL_CHARS:
+            out.append(ch)
+            continue
+        left = re.search(r"(\w*)$", phrase[:i]).group(1)
+        right = re.match(r"\w*", phrase[i + 1:]).group(0)
+        glue = left and right and len(left) <= 2 and len(right) <= 2
+        out.append("" if glue else " ")
+    return " ".join("".join(out).split())
+
+
+def _charset_problem(phrase: str, kind: str, operators: frozenset) -> str | None:
+    bad = _forbidden_chars(phrase, operators)
+    if not bad:
+        return None
+    listed = " ".join(repr(ch) for ch in bad)
+    return (f"{kind} {phrase!r}: недопустимые символы {listed} — Директ отклонит "
+            f"(ошибка 5002). Замена: {suggest_phrase_fix(phrase, operators)!r}")
 
 
 def validate_combined_ad(ad: dict, group_name: str) -> list[Finding]:
@@ -225,27 +270,45 @@ def validate_keywords(group: dict, group_name: str) -> list[Finding]:
         cleaned = kw.replace('"', "").replace("[", "").replace("]", "").replace("!", "").replace("+", "")
         if len(cleaned.split()) > LIMITS["phrase_words"]:
             out.append(Finding("error", group_name, f"фраза {kw!r} длиннее {LIMITS['phrase_words']} слов"))
+        problem = _charset_problem(kw, "ключевая фраза", KEYWORD_OPERATORS)
+        if problem:
+            out.append(Finding("error", group_name, problem))
     return out
 
 
-def validate_negatives(creatives: dict) -> list[Finding]:
-    """Минус-фразы: лимиты по объёму на кампанию и на группу."""
+def _negative_phrase_problems(phrases: list[str], scope: str) -> list[Finding]:
+    """Число слов и символы каждой минус-фразы."""
     out: list[Finding] = []
+    for phrase in phrases:
+        if len(phrase.split()) > LIMITS["phrase_words"]:
+            out.append(Finding("error", scope, f"минус-фраза {phrase!r} длиннее {LIMITS['phrase_words']} слов"))
+        problem = _charset_problem(phrase, "минус-фраза", NEGATIVE_OPERATORS)
+        if problem:
+            out.append(Finding("error", scope, problem))
+    return out
+
+
+def _group_scope(campaign_label: str | None, group_name: str) -> str:
+    return f"{campaign_label} / {group_name}" if campaign_label else group_name
+
+
+def validate_negatives(creatives: dict, campaign_label: str | None = None) -> list[Finding]:
+    """Минус-фразы одной кампании: объём на кампанию и на группу, слова, символы."""
+    out: list[Finding] = []
+    campaign_scope = campaign_label or "кампания"
 
     campaign_negatives = creatives.get("negative_keywords") or []
     total = _chars_without_spaces(campaign_negatives)
     if total > LIMITS["negative_campaign_chars"]:
         out.append(Finding(
-            "error", "кампания",
+            "error", campaign_scope,
             f"минус-фразы кампании {total} символов без пробелов > {LIMITS['negative_campaign_chars']} — "
             "вынеси часть в Библиотеку минус-фраз вручную и отметь в 10_launch_log.md"
         ))
-    for phrase in campaign_negatives:
-        if len(phrase.split()) > LIMITS["phrase_words"]:
-            out.append(Finding("error", "кампания", f"минус-фраза {phrase!r} длиннее {LIMITS['phrase_words']} слов"))
+    out.extend(_negative_phrase_problems(campaign_negatives, campaign_scope))
 
     for group in creatives.get("groups") or []:
-        name = group.get("name", "без имени")
+        name = _group_scope(campaign_label, group.get("name", "без имени"))
         group_negatives = group.get("negative_keywords") or []
         total = _chars_without_spaces(group_negatives)
         if total > LIMITS["negative_group_chars"]:
@@ -253,9 +316,7 @@ def validate_negatives(creatives: dict) -> list[Finding]:
                 "error", name,
                 f"минус-фразы группы {total} символов без пробелов > {LIMITS['negative_group_chars']}"
             ))
-        for phrase in group_negatives:
-            if len(phrase.split()) > LIMITS["phrase_words"]:
-                out.append(Finding("error", name, f"минус-фраза {phrase!r} длиннее {LIMITS['phrase_words']} слов"))
+        out.extend(_negative_phrase_problems(group_negatives, name))
 
     return out
 
@@ -287,8 +348,28 @@ def collapse_campaign_negatives(neg_artifact: dict, campaign_key: str) -> list[s
     return unique
 
 
-def validate_negatives_artifact(neg_artifact: dict, campaign_key: str | None) -> list[Finding]:
-    """Проверяет объём минус-фраз, который реально уйдёт в campaigns_add."""
+SHARED_NEGATIVES_SCOPE = "минус-фразы account_level — общие для всех кампаний"
+
+
+def validate_shared_negatives(neg_artifact: dict) -> list[Finding]:
+    """Минусы account_level уходят в каждую кампанию пакета.
+
+    Ошибка в них — общая причина отказа всех кампаний сразу, поэтому сообщаем о ней
+    один раз, с подсказкой исправить источник, а не каждую кампанию.
+    """
+    out = _negative_phrase_problems(neg_artifact.get("account_level") or [], SHARED_NEGATIVES_SCOPE)
+    for f in out:
+        f.message += " — исправь в 06_negative_keywords.json один раз: фраза уходит во все кампании"
+    return out
+
+
+def validate_negatives_artifact(neg_artifact: dict, campaign_key: str | None,
+                                check_shared: bool = True) -> list[Finding]:
+    """Проверяет минус-фразы, которые реально уйдут в campaigns_add.
+
+    check_shared=False — минусы account_level уже проверены validate_shared_negatives
+    (пакет кампаний), здесь только объём и фразы самой кампании.
+    """
     out: list[Finding] = []
     if not campaign_key:
         out.append(Finding(
@@ -314,36 +395,34 @@ def validate_negatives_artifact(neg_artifact: dict, campaign_key: str | None) ->
             "Обрежь по приоритету account_level → кросс-минусы → поисковые "
             "и вынеси остаток в Библиотеку минус-фраз вручную"
         ))
-    for phrase in collapsed:
-        if len(phrase.split()) > LIMITS["phrase_words"]:
-            out.append(Finding(
-                "error", "минус-фразы",
-                f"минус-фраза {phrase!r} длиннее {LIMITS['phrase_words']} слов"
-            ))
+    shared = {p.strip().lower() for p in neg_artifact.get("account_level") or []}
+    own = collapsed if check_shared else [p for p in collapsed if p.strip().lower() not in shared]
+    scope = "минус-фразы" if check_shared else f"минус-фразы {campaign_key}"
+    out.extend(_negative_phrase_problems(own, scope))
     return out
 
 
-def validate_creatives(creatives: dict, workspace: Path | None = None) -> list[Finding]:
-    """Полная проверка артефакта. workspace нужен, чтобы искать файлы изображений."""
+def _validate_campaign(campaign: dict, workspace: Path | None,
+                       campaign_label: str | None) -> tuple[list[Finding], set[str]]:
+    """Одна кампания: (находки, уточнения её групп — для лимита на аккаунт)."""
     out: list[Finding] = []
+    campaign_scope = campaign_label or "кампания"
 
-    if not creatives.get("campaign_key"):
+    if not campaign.get("campaign_key"):
         out.append(Finding(
-            "warning", "кампания",
+            "warning", campaign_scope,
             "нет campaign_key — заливка не свяжет минусы, цели и стратегию с этой кампанией"
         ))
-    if not creatives.get("campaign_name"):
-        out.append(Finding("error", "кампания", "нет campaign_name"))
+    if not campaign.get("campaign_name"):
+        out.append(Finding("error", campaign_scope, "нет campaign_name"))
 
-    groups = creatives.get("groups") or []
+    groups = campaign.get("groups") or []
     if not groups:
-        out.append(Finding("error", "кампания", "нет ни одной группы"))
+        out.append(Finding("error", campaign_scope, "нет ни одной группы"))
 
-    # Общее количество уточнений в аккаунте ограничено — считаем уникальные по всем группам.
-    all_callouts: set[str] = set()
-
+    callouts: set[str] = set()
     for group in groups:
-        name = group.get("name", "без имени")
+        name = _group_scope(campaign_label, group.get("name", "без имени"))
         ad = group.get("combined_ad")
         if not ad:
             out.append(Finding("error", name, "нет объекта combined_ad — объявление не собрано"))
@@ -351,20 +430,65 @@ def validate_creatives(creatives: dict, workspace: Path | None = None) -> list[F
             # href может прийти из группы или из корня артефакта
             resolved = dict(ad)
             if not resolved.get("href"):
-                resolved["href"] = group.get("url") or creatives.get("default_url")
+                resolved["href"] = group.get("url") or campaign.get("default_url")
             out.extend(validate_combined_ad(resolved, name))
             if workspace is not None:
                 out.extend(validate_images_exist(ad, name, workspace))
-            all_callouts.update(ad.get("callouts") or [])
+            callouts.update(ad.get("callouts") or [])
         out.extend(validate_keywords(group, name))
+
+    out.extend(validate_negatives(campaign, campaign_label))
+    return out, callouts
+
+
+def validate_creatives(creatives: dict, workspace: Path | None = None) -> list[Finding]:
+    """Полная проверка артефакта: одной кампании или пакета.
+
+    workspace нужен, чтобы искать файлы изображений.
+    """
+    out: list[Finding] = []
+    # Общее количество уточнений в аккаунте ограничено — считаем уникальные по всем группам.
+    all_callouts: set[str] = set()
+
+    if not is_package(creatives):
+        found, all_callouts = _validate_campaign(creatives, workspace, None)
+        out.extend(found)
+    else:
+        campaigns = campaigns_of(creatives)
+        if not campaigns:
+            out.append(Finding("error", "пакет", "в campaigns нет ни одной кампании"))
+        keys = [c.get("campaign_key") for c in campaigns if c.get("campaign_key")]
+        for key in sorted({k for k in keys if keys.count(k) > 1}):
+            out.append(Finding("error", "пакет", f"campaign_key {key!r} у нескольких кампаний — у каждой свой"))
+        for i, campaign in enumerate(campaigns, 1):
+            label = campaign.get("campaign_name") or campaign.get("campaign_key") or f"кампания {i}"
+            found, callouts = _validate_campaign(campaign, workspace, label)
+            out.extend(found)
+            all_callouts |= callouts
 
     if len(all_callouts) > LIMITS["callouts_account_max"]:
         out.append(Finding(
-            "error", "кампания",
+            "error", "пакет" if is_package(creatives) else "кампания",
             f"уникальных уточнений {len(all_callouts)} > {LIMITS['callouts_account_max']} на аккаунт"
         ))
+    return out
 
-    out.extend(validate_negatives(creatives))
+
+def validate_package_negatives(creatives: dict, neg_artifact: dict) -> list[Finding]:
+    """Минусы из 06_negative_keywords.json по каждой кампании пакета (или одной кампании)."""
+    if not is_package(creatives):
+        return validate_negatives_artifact(neg_artifact, creatives.get("campaign_key"))
+    out = validate_shared_negatives(neg_artifact)
+    for campaign in campaigns_of(creatives):
+        out.extend(validate_negatives_artifact(neg_artifact, campaign.get("campaign_key"), check_shared=False))
+    return out
+
+
+def validate_negatives_only(neg_artifact: dict) -> list[Finding]:
+    """Шаг 6: минусы до объявлений — по кампаниям из самого 06_negative_keywords.json."""
+    out = validate_shared_negatives(neg_artifact)
+    for key in neg_artifact.get("campaigns") or {}:
+        out.extend(validate_negatives_artifact(neg_artifact, key, check_shared=False))
     return out
 
 
@@ -384,24 +508,32 @@ def main() -> None:
     parser.add_argument("--creatives-json", default=None,
                         help="Путь к 08_creatives.json. По умолч. — <workspace>/08_creatives.json")
     parser.add_argument("--json", action="store_true", help="Машиночитаемый вывод")
+    parser.add_argument("--negatives-only", action="store_true",
+                        help="Только 06_negative_keywords.json — проверка на Шаге 6, до объявлений")
     args = parser.parse_args()
 
     workspace = Path(args.workspace)
-    creatives_path = resolve_creatives_path(workspace, args.creatives_json)
-
-    if not creatives_path.exists():
-        print(f"Не найден файл креативов: {creatives_path}", file=sys.stderr)
-        sys.exit(1)
-
-    creatives = json.loads(creatives_path.read_text(encoding="utf-8"))
-    findings = validate_creatives(creatives, workspace)
-
-    # Минусы кампании собираются при заливке из 06_negative_keywords.json,
-    # а не из креативов — проверяем именно тот набор, который уйдёт в API.
     negatives_path = workspace / "06_negative_keywords.json"
-    if negatives_path.exists():
-        neg_artifact = json.loads(negatives_path.read_text(encoding="utf-8"))
-        findings.extend(validate_negatives_artifact(neg_artifact, creatives.get("campaign_key")))
+
+    if args.negatives_only:
+        if not negatives_path.exists():
+            print(f"Не найден файл минус-фраз: {negatives_path}", file=sys.stderr)
+            sys.exit(1)
+        findings = validate_negatives_only(json.loads(negatives_path.read_text(encoding="utf-8")))
+    else:
+        creatives_path = resolve_creatives_path(workspace, args.creatives_json)
+        if not creatives_path.exists():
+            print(f"Не найден файл креативов: {creatives_path}", file=sys.stderr)
+            sys.exit(1)
+
+        creatives = json.loads(creatives_path.read_text(encoding="utf-8"))
+        findings = validate_creatives(creatives, workspace)
+
+        # Минусы кампании собираются при заливке из 06_negative_keywords.json,
+        # а не из креативов — проверяем именно тот набор, который уйдёт в API.
+        if negatives_path.exists():
+            neg_artifact = json.loads(negatives_path.read_text(encoding="utf-8"))
+            findings.extend(validate_package_negatives(creatives, neg_artifact))
 
     errors = [f for f in findings if f.level == "error"]
     warnings = [f for f in findings if f.level == "warning"]

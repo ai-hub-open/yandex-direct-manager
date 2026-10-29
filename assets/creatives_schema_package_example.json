@@ -1,0 +1,62 @@
+{
+  "_schema_note": "Пример 08_creatives.json для нескольких кампаний — пакет. Кампаний на Шаге 5 больше одной — пиши этот формат: один файл, массив campaigns. Каждая кампания — как файл одной кампании (creatives_schema_combined_example.json): campaign_key из 05_campaign_structure.json (у каждой свой), campaign_name, groups с combined_ad; default_url корня — запасной для кампаний без своего. Минус-фразы кампаний приходят из 06_negative_keywords.json, здесь — только свои узкие. Проверяется через python -m scripts.preflight.",
+  "default_url": "https://aismm.pro/?utm_source=yandex&utm_medium=cpc&utm_campaign={campaign_id}&utm_term={keyword}",
+  "campaigns": [
+    {
+      "campaign_key": "freelancer",
+      "campaign_name": "ЕПК — AiSMM Pro — Фрилансер — RU",
+      "negative_keywords": ["вакансия"],
+      "groups": [
+        {
+          "name": "SMM-фрилансер — автогенерация контента",
+          "url": "https://aismm.pro/dlya-frilancera",
+          "keywords": ["\"автоматизация смм\"", "\"нейросеть для смм\""],
+          "negative_keywords": ["обучение", "курс"],
+          "combined_ad": {
+            "titles": ["Сервис для контента в соцсетях с ИИ", "SMM на ИИ от 990 ₽", "Триал 7 дней без карты"],
+            "texts": [
+              "Генерация постов и видео под стиль клиента. Триал 7 дней без карты.",
+              "Тариф соло от 990 ₽. Видео, статичные посты, заголовки. Попробовать."
+            ],
+            "display_url_path": "dlya-frilancera",
+            "images": [],
+            "videos": [],
+            "sitelinks": [
+              {"title": "Тарифы", "description": "От 990 ₽/мес для соло", "url": "https://aismm.pro/pricing"},
+              {"title": "Демо генерации", "description": "Без регистрации, сейчас", "url": "https://aismm.pro/demo"}
+            ],
+            "callouts": ["Без карты", "Триал 7 дней"]
+          }
+        }
+      ]
+    },
+    {
+      "campaign_key": "agency",
+      "campaign_name": "ЕПК — AiSMM Pro — Агентства — RU",
+      "negative_keywords": [],
+      "groups": [
+        {
+          "name": "SMM-агентства — контент для клиентов",
+          "url": "https://aismm.pro/dlya-agentstv",
+          "keywords": ["\"смм сервис для агентства\"", "\"контент для клиентов агентства\""],
+          "negative_keywords": [],
+          "combined_ad": {
+            "titles": ["ИИ-контент для клиентов агентства", "Посты для 10 клиентов за вечер", "Тариф для агентств"],
+            "texts": [
+              "Контент под стиль каждого клиента в одном кабинете. Триал 7 дней.",
+              "Командный доступ, бренды клиентов, выгрузка постов. Попробовать."
+            ],
+            "display_url_path": "dlya-agentstv",
+            "images": [],
+            "videos": [],
+            "sitelinks": [
+              {"title": "Тарифы", "description": "Для команд и агентств", "url": "https://aismm.pro/pricing"},
+              {"title": "Кейсы агентств", "description": "Как ведут больше клиентов", "url": "https://aismm.pro/cases"}
+            ],
+            "callouts": ["Без карты", "Командный доступ"]
+          }
+        }
+      ]
+    }
+  ]
+}
