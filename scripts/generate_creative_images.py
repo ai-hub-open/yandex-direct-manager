@@ -28,12 +28,14 @@ try:
         IMAGE_SPECS, build_format_plan, build_prompt, detect_creative_type,
     )
     from scripts.credentials import load_api_key, CredentialNotFound
+    from scripts.creatives_io import iter_groups
 except ImportError:
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from scripts.prompt_templates import (
         IMAGE_SPECS, build_format_plan, build_prompt, detect_creative_type,
     )
     from scripts.credentials import load_api_key, CredentialNotFound
+    from scripts.creatives_io import iter_groups
 
 
 def load_brand_config(workspace: Path) -> dict:
@@ -201,7 +203,8 @@ def run_generation(workspace: Path, model: str, dry_run: bool, force: bool,
     log = []
     changed = False
 
-    for gi, group in enumerate(data.get("groups", []), 1):
+    # Номер группы сквозной по всем кампаниям пакета — имена файлов g{N}_… не пересекаются.
+    for gi, (_campaign, group) in enumerate(iter_groups(data), 1):
         if only_group and gi != int(only_group):
             continue
         ca = group.get("combined_ad") or {}

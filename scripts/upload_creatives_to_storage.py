@@ -72,9 +72,11 @@ import requests
 
 try:
     from scripts.credentials import CredentialNotFound, load_api_key
+    from scripts.creatives_io import iter_groups
 except ImportError:  # запуск напрямую, не как модуль пакета
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from scripts.credentials import CredentialNotFound, load_api_key
+    from scripts.creatives_io import iter_groups
 
 DEFAULT_BASE_URL = "https://storage.aihub.click.ru"
 DEFAULT_TTL = 7200  # максимум хранилища
@@ -131,13 +133,13 @@ def collect_images(ws: Path, all_assets: bool, explicit: list[str] | None) -> li
 
 
 def _images_from_creatives(ws: Path) -> list[Path]:
-    """Собирает пути картинок из combined_ad.images всех групп 08_creatives.json."""
+    """Собирает пути картинок из combined_ad.images всех групп всех кампаний 08_creatives.json."""
     creatives = ws / "08_creatives.json"
     if not creatives.exists():
         return []
     data = json.loads(creatives.read_text(encoding="utf-8"))
     out: list[Path] = []
-    for group in data.get("groups", []):
+    for _campaign, group in iter_groups(data):
         for rel in (group.get("combined_ad") or {}).get("images", []) or []:
             p = Path(rel)
             out.append(p if p.is_absolute() else ws / rel)
