@@ -263,3 +263,32 @@ def test_group_and_concept_filters(tmp_path, monkeypatch, fast_sleep):
     })
     run_generation(ws, "gpt-image-1", dry_run=False, force=False, only_group="1", only_concept="B")
     assert names == ["g1_B_1x1"]
+
+
+def test_package_numbers_groups_across_campaigns(tmp_path, monkeypatch):
+    """Пакет кампаний: номер группы сквозной, файлы второй кампании не затирают первую."""
+    names = []
+
+    def fake_gen(prompt, size, model, output_path, api_key=None):
+        names.append(Path(output_path).stem)
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(output_path).write_bytes(b"x")
+        return True
+
+    monkeypatch.setattr("scripts.generate_creative_images.generate_via_openai", fake_gen)
+    monkeypatch.setattr("scripts.generate_creative_images.postprocess", lambda *a, **k: None)
+    monkeypatch.setattr("scripts.generate_creative_images.load_api_key", lambda name: "KEY")
+
+    def group(name):
+        return {"name": name, "combined_ad": {"visual_concepts": [
+            {"id": "A", "type": "product_offer", "angle": "a", "usp_on_creative": "U", "formats": ["1x1"]},
+        ], "images": []}}
+
+    ws = _workspace(tmp_path, creatives={"campaigns": [
+        {"campaign_name": "C1", "groups": [group("G1")]},
+        {"campaign_name": "C2", "groups": [group("G2")]},
+    ]})
+    run_generation(ws, "gpt-image-1", dry_run=False, force=False, only_group=None, only_concept=None)
+    assert names == ["g1_A_1x1", "g2_A_1x1"]
+    data = json.loads((ws / "08_creatives.json").read_text(encoding="utf-8"))
+    assert data["campaigns"][1]["groups"][0]["combined_ad"]["images"] == ["assets/images/g2_A_1x1.png"]

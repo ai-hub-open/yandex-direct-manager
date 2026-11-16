@@ -437,3 +437,149 @@ def test_missing_campaign_key_is_warning():
     from scripts.preflight import validate_negatives_artifact
     findings = validate_negatives_artifact(_neg_artifact(), None)
     assert findings and findings[0].level == "warning"
+
+
+# --- символы ключевых и минус-фраз --------------------------------------------
+# Прогон 29.10.2026 (aihub-681): минус-фраза «б/у» прошла preflight, Директ отклонил
+# все шесть кампаний ошибкой 5002.
+
+def test_slash_in_campaign_negative_is_error():
+    findings = validate_negatives({"negative_keywords": ["б/у"]})
+    assert "'/'" in _messages(_errors(findings))
+
+
+def test_slash_fix_suggestion_glues_short_abbreviation():
+    from scripts.preflight import NEGATIVE_OPERATORS, suggest_phrase_fix
+    assert suggest_phrase_fix("б/у", NEGATIVE_OPERATORS) == "бу"
+    assert suggest_phrase_fix("seo/smm", NEGATIVE_OPERATORS) == "seo smm"
+
+
+def test_slash_in_group_negative_is_error():
+    creatives = {"groups": [{"name": "G", "negative_keywords": ["диван б/у"]}]}
+    assert _errors(validate_negatives(creatives))
+
+
+def test_negative_operators_pass():
+    """Справка «Минус-фразы»: поддерживаются " " [] ! +."""
+    phrases = ['"купить диван"', "[серый в яблоках]", "+с !лазерным сенсором", "онлайн-курс", "2.0"]
+    assert validate_negatives({"negative_keywords": phrases}) == []
+
+
+def test_grouping_operators_in_negative_are_error():
+    """( ) и | — операторы ключевой фразы, в минус-фразах их нет."""
+    assert _errors(validate_negatives({"negative_keywords": ["(дешево|бесплатно)"]}))
+
+
+def test_keyword_operators_pass():
+    group = {"keywords": ['"купить !диван"', "[москва диван]", "диван (купить|заказать)", "диван -бу", "mcdonald's"]}
+    assert validate_keywords(group, "G") == []
+
+
+def test_forbidden_chars_in_keyword_are_error():
+    for kw in ("диван б/у", "seo & smm", "скидка 50%", "диван№1", "купить_диван"):
+        assert _errors(validate_keywords({"keywords": [kw]}, "G")), kw
+
+
+def test_slash_in_collapsed_negatives_is_error():
+    """Минусы, которые уйдут в campaigns_add, собираются из 06_negative_keywords.json."""
+    from scripts.preflight import validate_negatives_artifact
+    art = _neg_artifact()
+    art["campaigns"]["premium"]["search"].append("б/у")
+    assert _errors(validate_negatives_artifact(art, "premium"))
+
+
+# --- пакет кампаний (campaigns[]) ---------------------------------------------
+# Прогон 29.10.2026: агент собрал общий файл шести кампаний, preflight ждал одну
+# кампанию в корне и не распознал структуру.
+
+def _ok_package():
+    first = _ok_creatives()
+    second = _ok_creatives()
+    second["campaign_key"] = "srochno"
+    second["campaign_name"] = "ЕПК — Срочно"
+    second["groups"][0]["name"] = "G2"
+    for campaign in (first, second):
+        campaign.pop("default_url")
+    return {"default_url": "https://example.com", "campaigns": [first, second]}
+
+
+def test_package_passes():
+    assert validate_creatives(_ok_package()) == []
+
+
+def test_package_errors_name_campaign_and_group():
+    package = _ok_package()
+    package["campaigns"][1]["groups"][0]["combined_ad"]["titles"] = ["Я" * (LIMITS["title"] + 1)]
+    errors = _errors(validate_creatives(package))
+    assert errors and all(f.scope == "ЕПК — Срочно / G2" for f in errors)
+
+
+def test_package_root_default_url_is_inherited():
+    package = _ok_package()
+    group = package["campaigns"][0]["groups"][0]
+    group["combined_ad"].pop("href")
+    group.pop("url")
+    assert not _errors(validate_creatives(package))
+
+
+def test_package_empty_campaigns_is_error():
+    assert _errors(validate_creatives({"campaigns": []}))
+
+
+def test_package_duplicate_campaign_key_is_error():
+    package = _ok_package()
+    package["campaigns"][1]["campaign_key"] = "premium"
+    assert "premium" in _messages(_errors(validate_creatives(package)))
+
+
+def test_package_callouts_counted_across_campaigns():
+    package = _ok_package()
+    half = LIMITS["callouts_account_max"] // 2 + 1
+    package["campaigns"][0]["groups"][0]["combined_ad"]["callouts"] = [f"А {i}" for i in range(half)]
+    package["campaigns"][1]["groups"][0]["combined_ad"]["callouts"] = [f"Б {i}" for i in range(half)]
+    assert "уточнений" in _messages(_errors(validate_creatives(package)))
+
+
+def test_shared_negative_reported_once_for_package():
+    """Минус account_level уходит во все кампании: одна ошибка с указанием источника, а не по кампании."""
+    from scripts.preflight import SHARED_NEGATIVES_SCOPE, validate_package_negatives
+    art = {"account_level": ["б/у"], "campaigns": {"premium": {}, "srochno": {}}}
+    errors = _errors(validate_package_negatives(_ok_package(), art))
+    assert len(errors) == 1
+    assert errors[0].scope == SHARED_NEGATIVES_SCOPE
+
+
+def test_campaign_negative_in_package_names_campaign():
+    from scripts.preflight import validate_package_negatives
+    art = {"account_level": [], "campaigns": {"premium": {}, "srochno": {"search": ["б/у"]}}}
+    errors = _errors(validate_package_negatives(_ok_package(), art))
+    assert len(errors) == 1 and "srochno" in errors[0].scope
+
+
+def test_single_campaign_negatives_still_checked():
+    from scripts.preflight import validate_package_negatives
+    art = {"account_level": ["б/у"], "campaigns": {"premium": {}}}
+    assert _errors(validate_package_negatives(_ok_creatives(), art))
+
+
+# --- примеры схем: генератор берёт их за образец — preflight обязан их принять --
+
+def test_schema_examples_pass_preflight():
+    from pathlib import Path
+    assets = Path(__file__).resolve().parent.parent / "assets"
+    for name in ("creatives_schema_combined_example.json", "creatives_schema_package_example.json"):
+        data = json.loads((assets / name).read_text(encoding="utf-8"))
+        assert not _errors(validate_creatives(data)), name
+
+
+def test_negatives_only_checks_every_campaign_of_step6():
+    """Шаг 6, объявлений ещё нет: проверяем кампании по самому 06_negative_keywords.json."""
+    from scripts.preflight import validate_negatives_only
+    art = {"account_level": ["б/у"], "campaigns": {"premium": {"search": ["seo/smm"]}, "srochno": {}}}
+    errors = _errors(validate_negatives_only(art))
+    assert len(errors) == 2
+
+
+def test_negatives_only_clean_artifact_passes():
+    from scripts.preflight import validate_negatives_only
+    assert validate_negatives_only(_neg_artifact()) == []

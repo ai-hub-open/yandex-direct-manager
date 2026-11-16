@@ -26,6 +26,7 @@ import csv
 import json
 from pathlib import Path
 
+from scripts.creatives_io import campaigns_of, iter_groups
 from scripts.preflight import LIMITS, resolve_creatives_path
 from scripts.preflight import validate_combined_ad as _validate_combined_ad
 
@@ -61,10 +62,10 @@ def validate_combined_ad(ad: dict, group_name: str) -> list[str]:
 def assemble_combined_ad_rows(creatives: dict) -> tuple[list[list], list[str]]:
     rows: list[list] = []
     all_warnings: list[str] = []
-    campaign_name = creatives.get("campaign_name", "")
-    default_url = creatives.get("default_url", "")
 
-    for group in creatives.get("groups", []):
+    for campaign, group in iter_groups(creatives):
+        campaign_name = campaign.get("campaign_name", "")
+        default_url = campaign.get("default_url", "")
         ad = group.get("combined_ad")
         if not ad:
             all_warnings.append(f"[{group['name']}] нет объекта combined_ad — объявление не собрано")
@@ -125,14 +126,15 @@ def select_assembler(creatives: dict) -> tuple[list[list], list[str], list[str]]
 
 def assemble_keyword_rows(creatives: dict) -> list[list]:
     rows: list[list] = []
-    campaign_name = creatives.get("campaign_name", "")
-    for group in creatives.get("groups", []):
-        for kw in group.get("keywords", []):
-            rows.append([campaign_name, group["name"], kw, "phrase"])
-        for nkw in group.get("negative_keywords", []):
-            rows.append([campaign_name, group["name"], nkw, "negative_group"])
-    for nkw in creatives.get("negative_keywords", []):
-        rows.append([campaign_name, "", nkw, "negative_campaign"])
+    for campaign in campaigns_of(creatives):
+        campaign_name = campaign.get("campaign_name", "")
+        for group in campaign.get("groups", []):
+            for kw in group.get("keywords", []):
+                rows.append([campaign_name, group["name"], kw, "phrase"])
+            for nkw in group.get("negative_keywords", []):
+                rows.append([campaign_name, group["name"], nkw, "negative_group"])
+        for nkw in campaign.get("negative_keywords", []):
+            rows.append([campaign_name, "", nkw, "negative_campaign"])
     return rows
 
 

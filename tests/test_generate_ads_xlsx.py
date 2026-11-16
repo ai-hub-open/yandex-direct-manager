@@ -118,3 +118,26 @@ def test_select_assembler_handles_empty_input():
     rows, warnings, headers = select_assembler({"groups": []})
     assert headers is COMBINED_HEADERS
     assert rows == []
+
+
+def test_package_rows_carry_each_campaign_name():
+    """Пакет кампаний (campaigns[]): строки каждой кампании со своим именем и посадочной корня."""
+    from scripts.generate_ads_xlsx import assemble_keyword_rows
+    ad = _ok_combined_ad()
+    ad.pop("href")
+    package = {
+        "default_url": "https://example.com/root",
+        "campaigns": [
+            {"campaign_name": "C1", "negative_keywords": ["бесплатно"],
+             "groups": [{"name": "G1", "keywords": ["купить диван"], "combined_ad": ad}]},
+            {"campaign_name": "C2",
+             "groups": [{"name": "G2", "keywords": ["диван срочно"], "combined_ad": _ok_combined_ad()}]},
+        ],
+    }
+    rows, warnings = assemble_combined_ad_rows(package)
+    assert [r[0] for r in rows] == ["C1", "C2"]
+    assert rows[0][COMBINED_HEADERS.index("Href")] == "https://example.com/root"
+    assert not warnings
+    keyword_rows = assemble_keyword_rows(package)
+    assert ["C1", "", "бесплатно", "negative_campaign"] in keyword_rows
+    assert ["C2", "G2", "диван срочно", "phrase"] in keyword_rows
